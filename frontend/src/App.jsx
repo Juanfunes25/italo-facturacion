@@ -10,6 +10,7 @@ import Cierres from './screens/Cierres.jsx';
 import Reportes from './screens/Reportes.jsx';
 import PuntosEmision from './screens/PuntosEmision.jsx';
 import CajaChica from './screens/CajaChica.jsx';
+import Sucursales from './screens/Sucursales.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [email, setEmail] = useState('');
@@ -58,6 +59,7 @@ const PANTALLAS = [
   { id: 'caja-chica', etiqueta: 'Caja chica', roles: ['admin', 'manager'], Componente: CajaChica },
   { id: 'puntos-emision', etiqueta: 'CAI / Puntos de emisión', roles: ['admin', 'manager'], Componente: PuntosEmision },
   { id: 'usuarios', etiqueta: 'Usuarios', roles: ['admin'], Componente: Usuarios },
+  { id: 'sucursales', etiqueta: 'Sucursales', roles: ['admin'], Componente: Sucursales },
 ];
 
 function PantallaApp({ session, onSalir }) {
@@ -65,6 +67,10 @@ function PantallaApp({ session, onSalir }) {
   const [sucursales, setSucursales] = useState([]);
   const [error, setError] = useState('');
   const [pantallaActiva, setPantallaActiva] = useState('pos');
+
+  function recargarSucursales() {
+    api.get('/sucursales', session).then(setSucursales).catch((e) => setError(e.message));
+  }
 
   useEffect(() => {
     Promise.all([api.get('/perfil', session), api.get('/sucursales', session)])
@@ -116,7 +122,7 @@ function PantallaApp({ session, onSalir }) {
         </button>
       </nav>
       <div className="contenido">
-        <Componente session={session} perfil={perfil} sucursales={sucursales} />
+        <Componente session={session} perfil={perfil} sucursales={sucursales} onCreada={recargarSucursales} />
       </div>
     </div>
   );

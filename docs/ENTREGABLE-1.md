@@ -127,10 +127,12 @@ si prefieres avanzar sin pausar — lo digo explícitamente donde aplica.
    Mackey y Próceres está vigente ante el SAR? Necesito CAI, rango autorizado
    y fecha límite de emisión reales por sucursal (o uno solo, ver pregunta 2)
    para activar el modo fiscal real. **Bloquea la fase 4.**
-2. **¿Un CAI por empresa o uno por sucursal?** Si es por sucursal, necesito
-   los 4 (Los Andes, 10 Calle EXPRESS, Mackey, Próceres). El esquema ya está
-   armado para soportar ambos casos (una fila en `puntos_emision` por
-   sucursal). **Bloquea la fase 4.**
+2. ~~¿Un CAI por empresa o uno por sucursal?~~ **Respondida:** uno por
+   sucursal. Ya hay 4 filas en `puntos_emision` (una por Los Andes, 10 Calle
+   EXPRESS, Mackey, Próceres) con CAI **ficticio** para poder testear
+   (`supabase/seed_datos_prueba.sql`), y el alta de una sucursal nueva crea
+   automáticamente su propio punto de emisión en modo borrador — no hay
+   límite de sucursales en el esquema.
 3. **Modo borrador mientras se resuelve 1.** Ya lo dejé activado por default
    (`es_borrador = true` en las 4 sucursales) — el sistema puede operar y
    generar "facturas" internas desde ya, marcadas visualmente como sin

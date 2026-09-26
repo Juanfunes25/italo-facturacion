@@ -16,6 +16,7 @@ import { reportes } from './routes/reportes.js';
 import { cajaChica } from './routes/cajaChica.js';
 import { usuarios } from './routes/usuarios.js';
 import { facturaImpresion } from './routes/facturaImpresion.js';
+import { sucursales } from './routes/sucursales.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,18 +31,13 @@ app.use('/api', requireAuth);
 // Perfil propio: sucursal, rol y flags (cierre ciego, sin horario)
 app.get('/api/perfil', (req, res) => res.json(req.perfil));
 
-app.get('/api/sucursales', async (req, res) => {
-  const { data, error } = await db.from('sucursales').select('*').eq('activo', true);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
-
 app.get('/api/formas-pago', async (req, res) => {
   const { data, error } = await db.from('formas_pago').select('*').order('nombre');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
+app.use('/api/sucursales', sucursales);
 app.use('/api/categorias', categorias);
 app.use('/api/productos', productos);
 app.use('/api/clientes', clientes);

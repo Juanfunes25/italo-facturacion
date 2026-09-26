@@ -21,17 +21,23 @@ Todas las fases del MVP están implementadas en código (backend + frontend):
 6. Cierre de caja (con `factura_desde`/`factura_hasta`) y reportes de
    ventas/ISV.
 
-**No emite facturas con validez fiscal todavía** — los puntos de emisión
-están en modo borrador (`es_borrador = true`, `cai = null`) hasta confirmar
-el RTN y el CAI vigente con el contador (ver `docs/ENTREGABLE-1.md`).
+Además: CRUD de sucursales (para agregar una quinta, sexta, etc. sin tocar
+código), y datos de prueba ya cargados (usuario admin + un CAI ficticio por
+sucursal, ver `supabase/seed_datos_prueba.sql`).
 
-**No probado en runtime contra Supabase real** — el código pasó
-`node --check` (backend) y `vite build` (frontend) sin errores, pero nadie
-lo ha corrido todavía contra la base de datos real porque la `service_role
-key` sólo está en el dashboard de Supabase, no en esta sesión. Antes de usarlo
-con cajeros reales: crear el primer usuario admin (ver abajo), correr
-`npm run dev` en ambos lados con las claves reales, y probar el flujo
-completo de una venta.
+**No emite facturas con validez fiscal todavía** — los puntos de emisión
+están en modo borrador (`es_borrador = true`) a propósito, aunque ya tienen
+un CAI de prueba cargado para poder testear el flujo completo. Hasta
+confirmar el RTN y el CAI real con el contador, el ticket/PDF sigue
+mostrando "sin validez fiscal" (ver `docs/ENTREGABLE-1.md`).
+
+**Desplegado en Render** (https://italo-facturacion.onrender.com), deploy
+automático en cada push a `main`. Falta un solo paso manual: pegar la
+`SUPABASE_SERVICE_ROLE_KEY` real en las variables de entorno del servicio en
+Render (Dashboard → italo-facturacion → Environment) — ese valor es secreto
+y ninguna herramienta puede leerlo por mí, sólo se ve en el dashboard de
+Supabase (Project Settings → API → service_role → Reveal). Sin eso el
+backend no puede escribir en la base y el servicio no arranca.
 
 ## Desarrollo local
 
@@ -58,30 +64,28 @@ Abrir `http://localhost:5174`.
 Las claves del proyecto Supabase (`italo-facturacion`, ref `bxifnabilsyqpmhqkeiw`)
 están en el dashboard de Supabase → Project Settings → API.
 
-## Crear el primer usuario (admin)
+## Usuario admin
 
-1. En el dashboard de Supabase → Authentication → Users → "Add user", crear el
-   usuario de Juan con su correo y una contraseña.
-2. Copiar el UUID del usuario creado.
-3. En el SQL Editor de Supabase:
+Ya está creado (ver `supabase/seed_datos_prueba.sql`): `juancarlosocchiena@gmail.com`,
+rol `admin`, sin sucursal fija (opera sobre las 4). La contraseña se la pasó
+Claude a Juan por chat al crearlo — cámbiala desde Supabase → Authentication
+→ Users en cuanto puedas.
 
-```sql
-insert into perfiles (id, nombre, rol, sucursal_id)
-values ('<uuid-del-usuario>', 'Juan Funes', 'admin', null);
-```
-
-(`sucursal_id = null` para el admin porque opera sobre las 4 sucursales.)
+Para crear cajeros nuevos ya no hace falta el SQL Editor: la pantalla
+"Usuarios" del sistema (sólo admin) crea el login de Auth y el perfil en un
+solo paso.
 
 ## Despliegue en Render
 
-1. Conectar este repositorio en el dashboard de Render como Web Service (Render
-   lee `render.yaml` automáticamente).
-2. Completar las variables de entorno marcadas `sync: false`:
-   - `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API →
-     service_role — **nunca** exponerla en el frontend).
-   - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (la anon/publishable key,
-     esa sí es segura de exponer).
-3. Cada push a `main` dispara un deploy automático.
+Ya está creado el servicio `italo-facturacion` (https://italo-facturacion.onrender.com),
+apuntando a este repo, rama `main`, deploy automático en cada push. Variables
+de entorno ya configuradas salvo una:
+
+- `SUPABASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` — puestas.
+- `SUPABASE_SERVICE_ROLE_KEY` — pendiente. Sacarla de Supabase → Project
+  Settings → API → service_role → Reveal, y pegarla en Render → el servicio
+  → Environment. Es el único paso que nadie puede automatizar por ser un
+  secreto.
 
 ## Tests
 
