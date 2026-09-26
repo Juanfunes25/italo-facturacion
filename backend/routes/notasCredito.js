@@ -1,0 +1,40 @@
+import { Router } from 'express';
+import { db } from '../db.js';
+import { requireRole } from '../middleware/requireRole.js';
+
+export const notasCredito = Router();
+
+// Sólo admin puede anular, igual de restrictivo que en WizPOS hoy (ni el
+// propio Juan tiene ese permiso ahí). La numeración de la factura original
+// no se toca — la nota de crédito es un documento aparte que la referencia.
+notasCredito.post('/', requireRole('admin'), async (req, res) => {
+  const { venta_id, motivo, monto } = req.body;
+  if (!venta_id || !motivo || monto === undefined) {
+    return res.status(400).json({ error: 'venta_id, motivo y monto son obligatorios' });
+  }
+
+  const { data: venta, error: errVenta } = await db.from('ventas').select('*').eq('id', venta_id).single();
+  if (errVenta || !venta) return res.status(404).json({ error: 'Factura no encontrada' });
+  if (venta.estado !== 'pagada') return res.status(409).json({ error: 'Sólo se anulan facturas ya pagadas' });
+
+  const { data: nota, error } = await db
+    .from('notas_credito')
+    .insert({ venta_id, motivo, monto, usuario_id: req.perfil.id })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  if (Number(monto) >= Number(venta.total)) {
+    await db.from('ventas').update({ anulada: true }).eq('id', venta_id);
+  }
+
+  res.status(201).json(nota);
+});
+
+notasCredito.get('/', requireRole('admin', 'manager'), async (req, res) => {
+  let query = db.from('notas_credito').select('*, ventas(numero_factura)').order('created_at', { ascending: false });
+  if (req.query.venta_id) query = query.eq('venta_id', req.query.venta_id);
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
