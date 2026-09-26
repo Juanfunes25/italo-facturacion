@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient.js';
-
-async function llamarApi(path, session) {
-  const res = await fetch(`/api${path}`, {
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
-  if (!res.ok) throw new Error((await res.json()).error || 'Error de red');
-  return res.json();
-}
+import { api } from './api.js';
+import Pos from './screens/Pos.jsx';
+import Facturas from './screens/Facturas.jsx';
+import Catalogo from './screens/Catalogo.jsx';
+import Clientes from './screens/Clientes.jsx';
+import Usuarios from './screens/Usuarios.jsx';
+import Cierres from './screens/Cierres.jsx';
+import Reportes from './screens/Reportes.jsx';
+import PuntosEmision from './screens/PuntosEmision.jsx';
+import CajaChica from './screens/CajaChica.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [email, setEmail] = useState('');
@@ -30,13 +32,7 @@ function PantallaLogin({ onEntrar }) {
       <form className="tarjeta" onSubmit={entrar}>
         <h1>Italo Facturación</h1>
         {error && <div className="error">{error}</div>}
-        <input
-          type="email"
-          placeholder="Correo"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
+        <input type="email" placeholder="Correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input
           type="password"
           placeholder="Contraseña"
@@ -52,13 +48,26 @@ function PantallaLogin({ onEntrar }) {
   );
 }
 
-function PantallaHome({ session, onSalir }) {
+const PANTALLAS = [
+  { id: 'pos', etiqueta: 'Facturación', roles: ['admin', 'manager', 'cajero'], Componente: Pos },
+  { id: 'facturas', etiqueta: 'Facturas', roles: ['admin', 'manager', 'cajero'], Componente: Facturas },
+  { id: 'cierres', etiqueta: 'Cierre de caja', roles: ['admin', 'manager', 'cajero'], Componente: Cierres },
+  { id: 'catalogo', etiqueta: 'Catálogo', roles: ['admin', 'manager'], Componente: Catalogo },
+  { id: 'clientes', etiqueta: 'Clientes', roles: ['admin', 'manager'], Componente: Clientes },
+  { id: 'reportes', etiqueta: 'Reportes', roles: ['admin', 'manager'], Componente: Reportes },
+  { id: 'caja-chica', etiqueta: 'Caja chica', roles: ['admin', 'manager'], Componente: CajaChica },
+  { id: 'puntos-emision', etiqueta: 'CAI / Puntos de emisión', roles: ['admin', 'manager'], Componente: PuntosEmision },
+  { id: 'usuarios', etiqueta: 'Usuarios', roles: ['admin'], Componente: Usuarios },
+];
+
+function PantallaApp({ session, onSalir }) {
   const [perfil, setPerfil] = useState(null);
   const [sucursales, setSucursales] = useState([]);
   const [error, setError] = useState('');
+  const [pantallaActiva, setPantallaActiva] = useState('pos');
 
   useEffect(() => {
-    Promise.all([llamarApi('/perfil', session), llamarApi('/sucursales', session)])
+    Promise.all([api.get('/perfil', session), api.get('/sucursales', session)])
       .then(([perfil, sucursales]) => {
         setPerfil(perfil);
         setSucursales(sucursales);
@@ -66,30 +75,55 @@ function PantallaHome({ session, onSalir }) {
       .catch((e) => setError(e.message));
   }, [session]);
 
+  if (error) {
+    return (
+      <div className="pantalla">
+        <div className="tarjeta">
+          <div className="error">{error}</div>
+          <button onClick={onSalir}>Salir</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!perfil) {
+    return (
+      <div className="pantalla">
+        <p>Cargando…</p>
+      </div>
+    );
+  }
+
+  const pantallasVisibles = PANTALLAS.filter((p) => p.roles.includes(perfil.rol));
+  const actual = pantallasVisibles.find((p) => p.id === pantallaActiva) ?? pantallasVisibles[0];
+  const Componente = actual.Componente;
+
   return (
-    <div className="pantalla">
-      <div className="tarjeta" style={{ maxWidth: 480 }}>
-        <h1>Italo Facturación</h1>
-        {error && <div className="error">{error}</div>}
-        {perfil && (
-          <p>
-            {perfil.nombre} · <span className="chip">{perfil.rol}</span>
-          </p>
-        )}
-        <h2>Sucursales</h2>
-        <ul>
-          {sucursales.map((s) => (
-            <li key={s.id}>{s.nombre}</li>
-          ))}
-        </ul>
-        <button onClick={onSalir}>Salir</button>
+    <div className="app-shell">
+      <nav className="nav">
+        <span className="marca">Italo Facturación</span>
+        {pantallasVisibles.map((p) => (
+          <button
+            key={p.id}
+            className={pantallaActiva === p.id ? 'activo' : ''}
+            onClick={() => setPantallaActiva(p.id)}
+          >
+            {p.etiqueta}
+          </button>
+        ))}
+        <button className="salir" onClick={onSalir}>
+          {perfil.nombre} · Salir
+        </button>
+      </nav>
+      <div className="contenido">
+        <Componente session={session} perfil={perfil} sucursales={sucursales} />
       </div>
     </div>
   );
 }
 
 export default function App() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(undefined);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -97,6 +131,13 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  if (session === undefined) {
+    return (
+      <div className="pantalla">
+        <p>Cargando…</p>
+      </div>
+    );
+  }
   if (!session) return <PantallaLogin onEntrar={setSession} />;
-  return <PantallaHome session={session} onSalir={() => supabase.auth.signOut()} />;
+  return <PantallaApp session={session} onSalir={() => supabase.auth.signOut()} />;
 }

@@ -36,6 +36,12 @@ app.get('/api/sucursales', async (req, res) => {
   res.json(data);
 });
 
+app.get('/api/formas-pago', async (req, res) => {
+  const { data, error } = await db.from('formas_pago').select('*').order('nombre');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 app.use('/api/categorias', categorias);
 app.use('/api/productos', productos);
 app.use('/api/clientes', clientes);

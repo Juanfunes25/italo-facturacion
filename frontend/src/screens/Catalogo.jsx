@@ -1,0 +1,169 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api.js';
+
+export default function Catalogo({ session }) {
+  const [categorias, setCategorias] = useState([]);
+  const [productos, setProductos] = useState([]);
+  const [nuevaCategoria, setNuevaCategoria] = useState('');
+  const [form, setForm] = useState({ codigo: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' });
+  const [editandoId, setEditandoId] = useState(null);
+  const [error, setError] = useState('');
+
+  async function cargar() {
+    setCategorias(await api.get('/categorias', session));
+    setProductos(await api.get('/productos?incluirInactivos=true', session));
+  }
+
+  useEffect(() => {
+    cargar().catch((e) => setError(e.message));
+  }, []);
+
+  async function crearCategoria() {
+    if (!nuevaCategoria.trim()) return;
+    await api.post('/categorias', session, { nombre: nuevaCategoria.trim() });
+    setNuevaCategoria('');
+    cargar();
+  }
+
+  function editar(producto) {
+    setEditandoId(producto.id);
+    setForm({
+      codigo: producto.codigo ?? '',
+      nombre: producto.nombre,
+      categoria_id: producto.categoria_id ?? '',
+      precio: producto.precio,
+      impuesto1_tasa: producto.impuesto1_tasa,
+    });
+  }
+
+  async function guardarProducto() {
+    setError('');
+    const body = {
+      codigo: form.codigo || null,
+      nombre: form.nombre,
+      categoria_id: form.categoria_id || null,
+      precio: Number(form.precio),
+      impuesto1_tasa: Number(form.impuesto1_tasa),
+    };
+    try {
+      if (editandoId) await api.put(`/productos/${editandoId}`, session, body);
+      else await api.post('/productos', session, body);
+      setForm({ codigo: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' });
+      setEditandoId(null);
+      cargar();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function alternarActivo(producto) {
+    if (producto.activo) await api.del(`/productos/${producto.id}`, session);
+    else await api.put(`/productos/${producto.id}`, session, { activo: true });
+    cargar();
+  }
+
+  return (
+    <div>
+      {error && <div className="error">{error}</div>}
+
+      <div className="panel">
+        <h2>Categorías</h2>
+        <div className="toolbar">
+          {categorias.map((c) => (
+            <span key={c.id} className="chip">
+              {c.nombre}
+            </span>
+          ))}
+        </div>
+        <div className="toolbar">
+          <input placeholder="Nueva categoría" value={nuevaCategoria} onChange={(e) => setNuevaCategoria(e.target.value)} />
+          <button className="boton-sm" onClick={crearCategoria}>
+            Agregar
+          </button>
+        </div>
+      </div>
+
+      <div className="panel">
+        <h2>{editandoId ? 'Editar producto' : 'Nuevo producto'}</h2>
+        <div className="toolbar">
+          <input placeholder="Código" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
+          <input
+            placeholder="Nombre"
+            value={form.nombre}
+            onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+          />
+          <select value={form.categoria_id} onChange={(e) => setForm({ ...form, categoria_id: e.target.value })}>
+            <option value="">Sin categoría</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Precio"
+            value={form.precio}
+            onChange={(e) => setForm({ ...form, precio: e.target.value })}
+          />
+          <input
+            type="number"
+            step="0.01"
+            placeholder="Tasa ISV (0.15)"
+            value={form.impuesto1_tasa}
+            onChange={(e) => setForm({ ...form, impuesto1_tasa: e.target.value })}
+          />
+          <button className="boton-sm" disabled={!form.nombre || !form.precio} onClick={guardarProducto}>
+            {editandoId ? 'Guardar' : 'Agregar'}
+          </button>
+          {editandoId && (
+            <button
+              className="boton-sm boton-secundario"
+              onClick={() => {
+                setEditandoId(null);
+                setForm({ codigo: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' });
+              }}
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+
+        <table className="tabla">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nombre</th>
+              <th>Categoría</th>
+              <th>Precio</th>
+              <th>ISV</th>
+              <th>Activo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {productos.map((p) => (
+              <tr key={p.id}>
+                <td>{p.codigo}</td>
+                <td>{p.nombre}</td>
+                <td>{p.categorias?.nombre ?? '—'}</td>
+                <td>L {Number(p.precio).toFixed(2)}</td>
+                <td>{(p.impuesto1_tasa * 100).toFixed(0)}%</td>
+                <td>{p.activo ? 'Sí' : 'No'}</td>
+                <td>
+                  <button className="boton-sm boton-secundario" onClick={() => editar(p)}>
+                    Editar
+                  </button>{' '}
+                  <button className="boton-sm boton-secundario" onClick={() => alternarActivo(p)}>
+                    {p.activo ? 'Desactivar' : 'Activar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

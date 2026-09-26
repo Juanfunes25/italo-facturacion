@@ -88,3 +88,260 @@ button:disabled {
   font-size: 0.8em;
   margin-top: 8px;
 }
+
+/* ── Layout general de la app (una vez logueado) ─────────────────────── */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  background: var(--navy-panel);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.nav .marca {
+  color: var(--terracota);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.nav button {
+  width: auto;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+
+.nav button.activo {
+  background: var(--navy);
+  color: var(--gold);
+}
+
+.nav .salir {
+  margin-left: auto;
+  background: transparent;
+  color: var(--text-dim);
+  width: auto;
+}
+
+.contenido {
+  flex: 1;
+  padding: 16px;
+}
+
+.panel {
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  margin-top: 0;
+  color: var(--terracota);
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.toolbar input, .toolbar select {
+  width: auto;
+  margin-bottom: 0;
+  min-width: 160px;
+}
+
+.boton-sm {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 0.85em;
+}
+
+.boton-secundario {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.boton-peligro {
+  background: #8a2c2c;
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--navy);
+  color: var(--text);
+}
+
+table.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+table.tabla th, table.tabla td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+table.tabla th {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.8em;
+}
+
+.alerta {
+  background: #3a2410;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.badge-borrador {
+  display: inline-block;
+  background: #3a1414;
+  color: #ff9d9d;
+  border: 1px solid #ff9d9d;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.75em;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+/* ── POS ──────────────────────────────────────────────────────────────── */
+
+.pos-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr 340px;
+  gap: 12px;
+  height: calc(100vh - 64px);
+}
+
+@media (max-width: 900px) {
+  .pos-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
+
+.pos-panel {
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.pos-categoria {
+  width: 100%;
+  margin-bottom: 6px;
+  background: var(--navy);
+  color: var(--text);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.pos-categoria.activa {
+  background: var(--terracota);
+  color: white;
+}
+
+.pos-productos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.pos-producto {
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 8px;
+  text-align: center;
+  color: var(--text);
+  height: 80px;
+}
+
+.pos-producto strong {
+  display: block;
+  font-size: 0.85em;
+  margin-bottom: 6px;
+}
+
+.pos-orden-linea {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9em;
+}
+
+.pos-orden-linea button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.8em;
+}
+
+.pos-totales-fila {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9em;
+  margin: 4px 0;
+  color: var(--text-dim);
+}
+
+.pos-totales-fila.total {
+  color: var(--text);
+  font-size: 1.2em;
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.pos-acciones {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 16px;
+}

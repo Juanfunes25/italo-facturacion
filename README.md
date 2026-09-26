@@ -10,9 +10,28 @@ reales (CAI/SAR).
 
 ## Estado
 
-Fase 1 en curso: esquema Supabase + autenticación/roles. **No emite facturas
-reales todavía** — los puntos de emisión están en modo borrador (`es_borrador =
-true`, `cai = null`) hasta confirmar los datos del SAR con el contador.
+Todas las fases del MVP están implementadas en código (backend + frontend):
+
+1. Esquema Supabase + autenticación/roles.
+2. Catálogo (categorías/productos) + clientes.
+3. Punto de venta: 3 paneles, órdenes abiertas (autoguardado), búsqueda.
+4. Motor de CAI: correlativo atómico (`finalizar_venta`), alertas de rango
+   vencido/agotado, activación del CAI real desde la pantalla de admin.
+5. Ticket de texto 40/48 columnas para térmica + PDF tamaño carta.
+6. Cierre de caja (con `factura_desde`/`factura_hasta`) y reportes de
+   ventas/ISV.
+
+**No emite facturas con validez fiscal todavía** — los puntos de emisión
+están en modo borrador (`es_borrador = true`, `cai = null`) hasta confirmar
+el RTN y el CAI vigente con el contador (ver `docs/ENTREGABLE-1.md`).
+
+**No probado en runtime contra Supabase real** — el código pasó
+`node --check` (backend) y `vite build` (frontend) sin errores, pero nadie
+lo ha corrido todavía contra la base de datos real porque la `service_role
+key` sólo está en el dashboard de Supabase, no en esta sesión. Antes de usarlo
+con cajeros reales: crear el primer usuario admin (ver abajo), correr
+`npm run dev` en ambos lados con las claves reales, y probar el flujo
+completo de una venta.
 
 ## Desarrollo local
 
