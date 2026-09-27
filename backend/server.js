@@ -26,6 +26,14 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// Diagnóstico sin login: confirma si SUPABASE_SERVICE_ROLE_KEY quedó bien
+// configurada en el entorno de despliegue, sin tener que entrar a la app.
+app.get('/api/health/db', async (req, res) => {
+  const { error } = await db.from('sucursales').select('id').limit(1);
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  res.json({ ok: true });
+});
+
 app.use('/api', requireAuth);
 
 // Perfil propio: sucursal, rol y flags (cierre ciego, sin horario)

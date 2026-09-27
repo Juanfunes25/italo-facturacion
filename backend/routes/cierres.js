@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
+import { enviarResumenCierre } from '../lib/correo.js';
 
 export const cierres = Router();
 
@@ -23,7 +24,7 @@ cierres.post('/', async (req, res) => {
 
     const { data: ventasDelTurno, error } = await db
       .from('ventas')
-      .select('total, numero_factura, correlativo')
+      .select('total, numero_factura, correlativo, anulada')
       .eq('sucursal_id', sucursal_id)
       .eq('estado', 'pagada')
       .gte('fecha_emision', fecha_inicio)
@@ -31,7 +32,12 @@ cierres.post('/', async (req, res) => {
       .order('correlativo', { ascending: true });
     if (error) throw new Error(error.message);
 
-    const totalVentas = round2(ventasDelTurno.reduce((s, v) => s + Number(v.total), 0));
+    // El correlativo emitido cuenta igual (nunca se le quita el número a una
+    // factura anulada), pero el efectivo que se devolvió al anularla no debe
+    // sumar al total esperado en caja.
+    const totalVentas = round2(
+      ventasDelTurno.filter((v) => !v.anulada).reduce((s, v) => s + Number(v.total), 0)
+    );
     const factura_desde = ventasDelTurno[0]?.numero_factura ?? null;
     const factura_hasta = ventasDelTurno[ventasDelTurno.length - 1]?.numero_factura ?? null;
 
@@ -64,7 +70,13 @@ cierres.post('/', async (req, res) => {
       .single();
     if (errInsert) throw new Error(errInsert.message);
 
-    res.status(201).json({ ...cierre, cantidad_facturas: ventasDelTurno.length, total_ventas: totalVentas });
+    const { data: sucursal } = await db.from('sucursales').select('nombre').eq('id', sucursal_id).single();
+    const resultado = { ...cierre, cantidad_facturas: ventasDelTurno.length, total_ventas: totalVentas };
+    // No bloquea la respuesta del cierre si el correo falla o no está
+    // configurado — es una utilidad extra, no una condición para cerrar.
+    enviarResumenCierre(resultado, sucursal?.nombre ?? '').catch(() => {});
+
+    res.status(201).json(resultado);
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

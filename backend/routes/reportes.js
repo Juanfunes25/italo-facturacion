@@ -11,7 +11,10 @@ async function ventasPagadasEnRango({ sucursal_id, fechaInicio, fechaFin }) {
   if (fechaFin) query = query.lte('fecha_emision', fechaFin);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data;
+  // Las facturas anuladas (nota de crédito por el total) no cuentan como
+  // venta ni para el ISV. Una nota de crédito PARCIAL no se resta aquí
+  // todavía — queda como ajuste manual para el contador.
+  return data.filter((v) => !v.anulada);
 }
 
 reportes.get('/ventas', async (req, res) => {
@@ -34,6 +37,8 @@ reportes.get('/ventas', async (req, res) => {
 });
 
 // Base para la declaración mensual del ISV: desglose exento/exonerado/gravado.
+// No sustituye la revisión del contador — no neteamos notas de crédito
+// parciales ni compras (crédito fiscal), sólo las ventas emitidas.
 reportes.get('/isv', async (req, res) => {
   try {
     const ventasDb = await ventasPagadasEnRango(req.query);

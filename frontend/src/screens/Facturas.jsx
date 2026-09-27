@@ -7,6 +7,8 @@ export default function Facturas({ session, perfil, sucursales }) {
   const [seleccionada, setSeleccionada] = useState(null);
   const [error, setError] = useState('');
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const [montoAnulacion, setMontoAnulacion] = useState('');
+  const [notasCredito, setNotasCredito] = useState([]);
 
   async function buscar() {
     const params = new URLSearchParams({ estado: 'pagada' });
@@ -25,15 +27,17 @@ export default function Facturas({ session, perfil, sucursales }) {
     const detalle = await api.get(`/ventas/${id}`, session);
     setSeleccionada(detalle);
     setMotivoAnulacion('');
+    setMontoAnulacion(detalle.total);
+    setNotasCredito(perfil.rol === 'cajero' ? [] : await api.get(`/notas-credito?venta_id=${id}`, session));
   }
 
   async function anular() {
-    if (!motivoAnulacion.trim()) return;
+    if (!motivoAnulacion.trim() || !montoAnulacion) return;
     try {
       await api.post('/notas-credito', session, {
         venta_id: seleccionada.id,
         motivo: motivoAnulacion,
-        monto: seleccionada.total,
+        monto: Number(montoAnulacion),
       });
       setSeleccionada(null);
       buscar();
@@ -144,15 +148,42 @@ export default function Facturas({ session, perfil, sucursales }) {
               </a>
             </div>
 
+            {notasCredito.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 10 }}>
+                <strong style={{ fontSize: '0.9em', color: 'var(--text-dim)' }}>Notas de crédito emitidas</strong>
+                {notasCredito.map((n) => (
+                  <div key={n.id} className="pos-orden-linea">
+                    <span>{n.motivo}</span>
+                    <span>L {Number(n.monto).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {perfil.rol === 'admin' && !seleccionada.anulada && (
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                 <input
-                  placeholder="Motivo de anulación"
+                  placeholder="Motivo de la nota de crédito"
                   value={motivoAnulacion}
                   onChange={(e) => setMotivoAnulacion(e.target.value)}
                 />
-                <button className="boton-peligro" disabled={!motivoAnulacion.trim()} onClick={anular}>
-                  Anular factura
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Monto a anular"
+                  value={montoAnulacion}
+                  onChange={(e) => setMontoAnulacion(e.target.value)}
+                />
+                <p style={{ fontSize: '0.8em', color: 'var(--text-dim)', marginTop: -6 }}>
+                  Si el monto es igual al total, la factura queda marcada como anulada. Si es menor, se
+                  registra como nota de crédito parcial (el correlativo de la factura no se toca).
+                </p>
+                <button
+                  className="boton-peligro"
+                  disabled={!motivoAnulacion.trim() || !montoAnulacion}
+                  onClick={anular}
+                >
+                  Emitir nota de crédito
                 </button>
               </div>
             )}

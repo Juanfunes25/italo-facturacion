@@ -16,6 +16,14 @@ notasCredito.post('/', requireRole('admin'), async (req, res) => {
   const { data: venta, error: errVenta } = await db.from('ventas').select('*').eq('id', venta_id).single();
   if (errVenta || !venta) return res.status(404).json({ error: 'Factura no encontrada' });
   if (venta.estado !== 'pagada') return res.status(409).json({ error: 'Sólo se anulan facturas ya pagadas' });
+  if (venta.anulada) return res.status(409).json({ error: 'Esta factura ya está anulada' });
+
+  const { data: notasPrevias } = await db.from('notas_credito').select('monto').eq('venta_id', venta_id);
+  const yaAcreditado = (notasPrevias ?? []).reduce((s, n) => s + Number(n.monto), 0);
+  const restante = Number(venta.total) - yaAcreditado;
+  if (Number(monto) > restante + 0.01) {
+    return res.status(400).json({ error: `El monto excede lo pendiente por acreditar (L ${restante.toFixed(2)})` });
+  }
 
   const { data: nota, error } = await db
     .from('notas_credito')
@@ -24,7 +32,7 @@ notasCredito.post('/', requireRole('admin'), async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
 
-  if (Number(monto) >= Number(venta.total)) {
+  if (Number(monto) >= restante - 0.01) {
     await db.from('ventas').update({ anulada: true }).eq('id', venta_id);
   }
 

@@ -68,3 +68,52 @@ export function formatearTicket(venta, ancho = 40) {
 
   return L.join('\n');
 }
+
+function escaparHtml(texto) {
+  return texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Página mínima para abrir el ticket en el navegador y mandarlo a imprimir
+// tal cual a la térmica (Ctrl+P / el botón imprime solo). El ancho en
+// caracteres define el tamaño de fuente para que la línea no se corte en
+// 40 u 48 columnas sin importar el zoom del navegador.
+export function envolverTicketHtml(textoTicket, ancho) {
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Ticket</title>
+<style>
+  @page { margin: 2mm; }
+  body { margin: 0; background: #fff; }
+  pre {
+    font-family: 'Courier New', monospace;
+    font-size: ${ancho === 48 ? '11px' : '13px'};
+    line-height: 1.25;
+    white-space: pre-wrap;
+    width: ${ancho}ch;
+    margin: 4px auto;
+    color: #000;
+  }
+  .imprimir {
+    display: block;
+    width: ${ancho}ch;
+    margin: 8px auto;
+    font-family: sans-serif;
+    font-size: 13px;
+    padding: 6px;
+  }
+  @media print {
+    .imprimir { display: none; }
+  }
+</style>
+</head>
+<body>
+<button class="imprimir" onclick="window.print()">Imprimir</button>
+<pre>${escaparHtml(textoTicket)}</pre>
+</body>
+</html>`;
+}
