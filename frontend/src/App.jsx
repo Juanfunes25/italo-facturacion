@@ -12,6 +12,7 @@ import PuntosEmision from './screens/PuntosEmision.jsx';
 import CajaChica from './screens/CajaChica.jsx';
 import Sucursales from './screens/Sucursales.jsx';
 import Dashboard from './screens/Dashboard.jsx';
+import Cotizaciones from './screens/Cotizaciones.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [email, setEmail] = useState('');
@@ -54,6 +55,7 @@ const PANTALLAS = [
   { id: 'dashboard', etiqueta: 'Dashboard', roles: ['admin', 'manager'], Componente: Dashboard },
   { id: 'pos', etiqueta: 'Facturación', roles: ['admin', 'manager', 'cajero'], Componente: Pos },
   { id: 'facturas', etiqueta: 'Facturas', roles: ['admin', 'manager', 'cajero'], Componente: Facturas },
+  { id: 'cotizaciones', etiqueta: 'Cotización de Eventos', roles: ['admin', 'manager'], Componente: Cotizaciones },
   { id: 'cierres', etiqueta: 'Cierre de caja', roles: ['admin', 'manager', 'cajero'], Componente: Cierres },
   { id: 'catalogo', etiqueta: 'Catálogo', roles: ['admin', 'manager'], Componente: Catalogo },
   { id: 'clientes', etiqueta: 'Clientes', roles: ['admin', 'manager'], Componente: Clientes },
