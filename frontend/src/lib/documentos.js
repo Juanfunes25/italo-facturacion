@@ -117,6 +117,12 @@ export async function imprimirTicket(ventaId, session, { reimpresion = false } =
   await imprimirHtml(html);
 }
 
+export async function imprimirCierre(cierreId, session) {
+  const { columnas } = leerConfigImpresora();
+  const html = await (await pedir(`/cierres/${cierreId}/ticket?columnas=${columnas}`, session)).text();
+  await imprimirHtml(html);
+}
+
 export async function imprimirPrueba(session, sucursal) {
   const { columnas } = leerConfigImpresora();
   const html = await (

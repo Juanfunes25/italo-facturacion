@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabaseClient.js';
 import { api } from './api.js';
-import { colorSucursal } from './lib/coloresSucursal.js';
+import { colorSucursal, nombreCortoSucursal, registrarColoresSucursales } from './lib/coloresSucursal.js';
 import Pos from './screens/Pos.jsx';
 import Facturas from './screens/Facturas.jsx';
 import Catalogo from './screens/Catalogo.jsx';
@@ -17,15 +17,7 @@ import Cotizaciones from './screens/Cotizaciones.jsx';
 import Impresora from './screens/Impresora.jsx';
 import Bitacora from './screens/Bitacora.jsx';
 import { useConexionEnVivo } from './lib/tiempoReal.js';
-
-// Mismo dominio interno que usa el backend (routes/usuarios.js) para los
-// usuarios que entran con nombre de usuario en vez de correo.
-const DOMINIO_USUARIOS = 'italo.local';
-
-function accesoAEmail(acceso) {
-  const texto = acceso.trim().toLowerCase();
-  return texto.includes('@') ? texto : `${texto}@${DOMINIO_USUARIOS}`;
-}
+import { accesoAEmail, claveInterna } from './lib/acceso.js';
 
 function PantallaLogin({ onEntrar }) {
   const [acceso, setAcceso] = useState('');
@@ -37,7 +29,10 @@ function PantallaLogin({ onEntrar }) {
     e.preventDefault();
     setError('');
     setCargando(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email: accesoAEmail(acceso), password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: await accesoAEmail(acceso),
+      password: claveInterna(password),
+    });
     setCargando(false);
     if (error) {
       return setError(
@@ -133,15 +128,22 @@ function PantallaApp({ session, onSalir }) {
     setPantallaActiva(id);
   }
 
+  // El color de cada sucursal viene de la base de datos: se registra antes
+  // de guardar la lista para que el primer render ya lo use.
+  function fijarSucursales(lista) {
+    registrarColoresSucursales(lista);
+    setSucursales(lista);
+  }
+
   function recargarSucursales() {
-    api.get('/sucursales', session).then(setSucursales).catch((e) => setError(e.message));
+    api.get('/sucursales', session).then(fijarSucursales).catch((e) => setError(e.message));
   }
 
   useEffect(() => {
     Promise.all([api.get('/perfil', session), api.get('/sucursales', session)])
       .then(([perfil, sucursales]) => {
         setPerfil(perfil);
-        setSucursales(sucursales);
+        fijarSucursales(sucursales);
         setSucursalActivaId((actual) => actual || perfil.sucursal_id || sucursales[0]?.id || '');
       })
       .catch((e) => setError(e.message));
@@ -158,8 +160,22 @@ function PantallaApp({ session, onSalir }) {
     setSucursalActivaId(nuevoId);
   }
 
-  const colorActivo = useMemo(() => colorSucursal(sucursalActivaId), [sucursalActivaId]);
   const sucursalActiva = sucursales.find((s) => s.id === sucursalActivaId);
+  const colorActivo = useMemo(
+    () => colorSucursal(sucursalActivaId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sucursalActivaId, sucursales]
+  );
+
+  // Pestaña del navegador y barra de color del sistema (en tablets y
+  // celulares) también dicen en qué sucursal se está — útil cuando hay
+  // varias ventanas abiertas.
+  useEffect(() => {
+    const corto = nombreCortoSucursal(sucursalActiva?.nombre);
+    document.title = corto ? `${corto} · Italo Facturación` : 'Italo Facturación';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && colorActivo.startsWith('#')) meta.setAttribute('content', colorActivo);
+  }, [sucursalActiva?.nombre, colorActivo]);
 
   if (error) {
     return (
@@ -203,12 +219,12 @@ function PantallaApp({ session, onSalir }) {
               >
                 {sucursales.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.nombre}
+                    {nombreCortoSucursal(s.nombre)}
                   </option>
                 ))}
               </select>
             ) : (
-              <span className="nav-sucursal-nombre">{sucursalActiva.nombre}</span>
+              <span className="nav-sucursal-nombre">{nombreCortoSucursal(sucursalActiva.nombre)}</span>
             )}
           </div>
         )}

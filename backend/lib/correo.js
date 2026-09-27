@@ -19,16 +19,33 @@ export async function enviarResumenCierre(cierre, sucursalNombre) {
 
   const destinatario = process.env.RESUMEN_CIERRE_EMAIL || process.env.GMAIL_USER;
   const asunto = `Cierre de caja — ${sucursalNombre} — ${new Date(cierre.fecha_fin).toLocaleDateString('es-HN')}`;
+  const L = (n) => `L ${Number(n ?? 0).toFixed(2)}`;
+  const dif = (n) => {
+    const d = Number(n ?? 0);
+    const color = Math.abs(d) < 0.005 ? '#1a7a42' : '#b3261e';
+    const texto = Math.abs(d) < 0.005 ? 'Cuadra' : d < 0 ? 'Faltante' : 'Sobrante';
+    return `<strong style="color:${color}">${texto} ${L(Math.abs(d))}</strong>`;
+  };
+  const zona = { timeZone: 'America/Tegucigalpa' };
   const cuerpo = `
     <h2>Cierre de caja — ${sucursalNombre}</h2>
-    <p>Del ${new Date(cierre.fecha_inicio).toLocaleString('es-HN')} al ${new Date(cierre.fecha_fin).toLocaleString('es-HN')}</p>
-    <table cellpadding="4" style="border-collapse:collapse">
-      <tr><td>Facturas</td><td>${cierre.factura_desde ?? '—'} a ${cierre.factura_hasta ?? '—'}</td></tr>
-      <tr><td>Total ventas</td><td>L ${Number(cierre.total_ventas ?? 0).toFixed(2)}</td></tr>
-      <tr><td>Total esperado</td><td>L ${Number(cierre.total_esperado).toFixed(2)}</td></tr>
-      <tr><td>Total contado</td><td>L ${Number(cierre.total_contado).toFixed(2)}</td></tr>
-      <tr><td><strong>Diferencia</strong></td><td><strong>L ${Number(cierre.diferencia).toFixed(2)}</strong></td></tr>
+    <p>Del ${new Date(cierre.fecha_inicio).toLocaleString('es-HN', zona)} al ${new Date(cierre.fecha_fin).toLocaleString('es-HN', zona)}
+       · Cajero: ${cierre.cajero?.nombre ?? ''}</p>
+    <p>Facturas ${cierre.factura_desde ?? '—'} a ${cierre.factura_hasta ?? '—'} (${cierre.cantidad_facturas ?? 0}) · Total ventas ${L(cierre.total_ventas)}</p>
+    <table cellpadding="6" style="border-collapse:collapse;border:1px solid #ddd">
+      <tr style="background:#f4f4f4"><th align="left">Forma</th><th align="right">Sistema</th><th align="right">Reportado</th><th align="right">Diferencia</th></tr>
+      <tr><td>Tarjeta (POS BAC ${L(cierre.pos_bac)} + Ficohsa ${L(cierre.pos_ficohsa)})</td>
+          <td align="right">${L(cierre.tarjeta_sistema)}</td>
+          <td align="right">${L(Number(cierre.pos_bac ?? 0) + Number(cierre.pos_ficohsa ?? 0))}</td>
+          <td align="right">${dif(cierre.diferencia_tarjeta)}</td></tr>
+      <tr><td>Efectivo (fondo ${L(cierre.fondo_caja)}, salidas ${L(cierre.salidas)})</td>
+          <td align="right">${L(cierre.total_esperado)}</td>
+          <td align="right">${L(cierre.efectivo_contado)}</td>
+          <td align="right">${dif(cierre.diferencia_efectivo)}</td></tr>
+      <tr><td>Transferencias</td><td align="right">${L(cierre.transferencia_sistema)}</td><td></td><td></td></tr>
+      <tr style="background:#f4f4f4"><td><strong>Total</strong></td><td></td><td></td><td align="right">${dif(cierre.diferencia)}</td></tr>
     </table>
+    ${cierre.observaciones ? `<p><strong>Observaciones:</strong> ${String(cierre.observaciones).replace(/</g, '&lt;')}</p>` : ''}
   `;
 
   try {

@@ -2,51 +2,28 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { accesoAEmail, accesoVisible, claveInterna } from '../lib/acceso.js';
 
 export const usuarios = Router();
-
-// Supabase Auth siempre pide un correo. Para cajeros que entran con un
-// nombre de usuario (sin correo real) se usa un correo interno en este
-// dominio, que nunca recibe mensajes. La pantalla de login hace la misma
-// traducción: si lo escrito no tiene "@", le agrega este dominio.
-const DOMINIO_USUARIOS = 'italo.local';
-const USUARIO_VALIDO = /^[a-z0-9._-]{3,30}$/;
-const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-export function accesoAEmail(acceso) {
-  const texto = String(acceso ?? '').trim().toLowerCase();
-  if (texto.includes('@')) {
-    if (!CORREO_VALIDO.test(texto)) throw new Error('El correo no tiene un formato válido');
-    return texto;
-  }
-  if (!USUARIO_VALIDO.test(texto)) {
-    throw new Error('El usuario debe tener de 3 a 30 caracteres: letras, números, punto, guion o guion bajo (sin espacios)');
-  }
-  return `${texto}@${DOMINIO_USUARIOS}`;
-}
-
-function accesoVisible(email) {
-  if (!email) return null;
-  return email.endsWith(`@${DOMINIO_USUARIOS}`) ? email.slice(0, -(DOMINIO_USUARIOS.length + 1)) : email;
-}
 
 usuarios.get('/', requireRole('admin'), async (req, res) => {
   const { data, error } = await db.from('perfiles').select('*, sucursales(nombre)').order('nombre');
   if (error) return res.status(500).json({ error: error.message });
 
   const { data: authData } = await db.auth.admin.listUsers({ perPage: 200 });
-  const correoPorId = new Map((authData?.users ?? []).map((u) => [u.id, u.email]));
-  res.json(data.map((u) => ({ ...u, acceso: accesoVisible(correoPorId.get(u.id)) })));
+  const authPorId = new Map((authData?.users ?? []).map((u) => [u.id, u]));
+  res.json(data.map((u) => ({ ...u, acceso: accesoVisible(authPorId.get(u.id)) })));
 });
 
 // Crea el usuario en Supabase Auth y su perfil en un solo paso — así Juan no
 // depende del dashboard de Supabase para dar de alta a un cajero nuevo.
 usuarios.post('/', requireRole('admin'), async (req, res) => {
   const { acceso, password, nombre, rol, sucursal_id, cierre_ciego, sin_horario } = req.body;
-  if (!acceso || !password || !nombre) {
+  if (!String(acceso ?? '').trim() || !password || !String(nombre ?? '').trim()) {
     return res.status(400).json({ error: 'Usuario (o correo), contraseña y nombre son obligatorios' });
   }
-  if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+  // Sin mínimo de largo ni restricción de caracteres: decisión de Juan.
+  const usuarioEscrito = String(acceso).normalize('NFC').trim().replace(/\s+/g, ' ');
 
   let email;
   try {
@@ -57,13 +34,15 @@ usuarios.post('/', requireRole('admin'), async (req, res) => {
 
   const { data: authData, error: authError } = await db.auth.admin.createUser({
     email,
-    password,
+    password: claveInterna(password),
     email_confirm: true,
+    user_metadata: { usuario: usuarioEscrito.includes('@') ? usuarioEscrito.toLowerCase() : usuarioEscrito },
   });
   if (authError) {
     const yaExiste = /already|registered|exists/i.test(authError.message);
-    return res.status(400).json({ error: yaExiste ? `Ya existe un usuario "${accesoVisible(email)}"` : authError.message });
+    return res.status(400).json({ error: yaExiste ? `Ya existe un usuario "${usuarioEscrito}"` : authError.message });
   }
+  const accesoMostrado = accesoVisible(authData.user);
 
   const { data: perfil, error: perfilError } = await db
     .from('perfiles')
@@ -87,9 +66,9 @@ usuarios.post('/', requireRole('admin'), async (req, res) => {
     entidad: 'usuario',
     entidadId: perfil.id,
     sucursalId: perfil.sucursal_id,
-    detalle: { nombre, acceso: accesoVisible(email), rol: perfil.rol },
+    detalle: { nombre, acceso: accesoMostrado, rol: perfil.rol },
   });
-  res.status(201).json({ ...perfil, acceso: accesoVisible(email) });
+  res.status(201).json({ ...perfil, acceso: accesoMostrado });
 });
 
 usuarios.put('/:id', requireRole('admin'), async (req, res) => {
@@ -125,10 +104,8 @@ usuarios.put('/:id', requireRole('admin'), async (req, res) => {
 // entrar al dashboard de Supabase.
 usuarios.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
   const { password } = req.body;
-  if (!password || password.length < 6) {
-    return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-  }
-  const { error } = await db.auth.admin.updateUserById(req.params.id, { password });
+  if (!password) return res.status(400).json({ error: 'Escribe la contraseña nueva' });
+  const { error } = await db.auth.admin.updateUserById(req.params.id, { password: claveInterna(password) });
   if (error) return res.status(400).json({ error: error.message });
   await registrarAuditoria(req, {
     accion: 'usuario.cambiar_contrasena',

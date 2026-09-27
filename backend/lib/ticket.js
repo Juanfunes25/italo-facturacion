@@ -106,6 +106,87 @@ export function formatearTicket(venta, ancho = 48) {
   return L.join('\n');
 }
 
+function fechaCorta(iso) {
+  return new Date(iso).toLocaleString('es-HN', {
+    timeZone: 'America/Tegucigalpa',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function etiquetaDiferencia(dif) {
+  const d = Number(dif ?? 0);
+  if (Math.abs(d) < 0.005) return 'CUADRA';
+  return d < 0 ? 'FALTANTE' : 'SOBRANTE';
+}
+
+// Ticket del cierre de caja, para engrapar con los cierres de lote de los
+// dos POS. Con cierre ciego (ocultarSistema) sólo imprime lo contado.
+export function formatearCierre(cierre, ancho = 48, { ocultarSistema = false } = {}) {
+  const L = [];
+  const fila = (etiqueta, monto) => L.push(filaMontoDerecha(etiqueta, monto, ancho));
+  L.push(centrar('ITALO GELATERIA', ancho));
+  L.push(centrar('CIERRE DE CAJA', ancho));
+  for (const r of ajustar(cierre.sucursales?.nombre ?? '', ancho)) L.push(centrar(r, ancho));
+  L.push(linea('-', ancho));
+  L.push(`Desde: ${fechaCorta(cierre.fecha_inicio)}`);
+  L.push(`Hasta: ${fechaCorta(cierre.fecha_fin)}`);
+  L.push(`Cajero: ${cierre.cajero?.nombre ?? ''}`);
+  if (cierre.elaboro?.nombre && cierre.elaboro.nombre !== cierre.cajero?.nombre) L.push(`Elaboro: ${cierre.elaboro.nombre}`);
+  if (cierre.factura_desde) {
+    for (const r of ajustar(`Facturas: ${cierre.factura_desde} a ${cierre.factura_hasta}`, ancho)) L.push(r);
+  }
+  if (cierre.cantidad_facturas != null) L.push(`Cantidad de facturas: ${cierre.cantidad_facturas}`);
+  L.push(linea('=', ancho));
+
+  L.push('TARJETA');
+  fila('  POS BAC', cierre.pos_bac ?? 0);
+  fila('  POS Ficohsa', cierre.pos_ficohsa ?? 0);
+  fila('  Total POS', Number(cierre.pos_bac ?? 0) + Number(cierre.pos_ficohsa ?? 0));
+  if (!ocultarSistema) {
+    fila('  Segun sistema', cierre.tarjeta_sistema ?? 0);
+    fila(`  ${etiquetaDiferencia(cierre.diferencia_tarjeta)}`, Math.abs(cierre.diferencia_tarjeta ?? 0));
+  }
+  L.push(linea('-', ancho));
+
+  L.push('EFECTIVO');
+  fila('  Contado en caja', cierre.efectivo_contado ?? 0);
+  fila('  Fondo de caja', cierre.fondo_caja ?? 0);
+  if (Number(cierre.salidas) > 0) fila('  Salidas de caja', cierre.salidas);
+  if (!ocultarSistema) {
+    fila('  Ventas en efectivo', cierre.efectivo_sistema ?? 0);
+    fila('  Esperado en caja', cierre.total_esperado ?? 0);
+    fila(`  ${etiquetaDiferencia(cierre.diferencia_efectivo)}`, Math.abs(cierre.diferencia_efectivo ?? 0));
+  }
+  L.push(linea('-', ancho));
+
+  if (!ocultarSistema) {
+    fila('TRANSFERENCIAS', cierre.transferencia_sistema ?? 0);
+    L.push(linea('=', ancho));
+    fila('TOTAL VENTAS', cierre.total_ventas ?? 0);
+    fila(`${etiquetaDiferencia(cierre.diferencia)} TOTAL`, Math.abs(cierre.diferencia ?? 0));
+    L.push(linea('=', ancho));
+  }
+
+  if (cierre.observaciones) {
+    L.push('Observaciones:');
+    for (const r of ajustar(cierre.observaciones, ancho)) L.push(r);
+  }
+  L.push('');
+  L.push('');
+  L.push(centrar('______________________', ancho));
+  L.push(centrar('Firma cajero', ancho));
+  L.push('');
+  L.push('');
+  L.push(centrar('______________________', ancho));
+  L.push(centrar('Firma supervisor', ancho));
+  L.push('');
+  return L.join('\n');
+}
+
 export function formatearTicketPrueba(ancho, sucursal) {
   const L = [];
   L.push(centrar('ITALO GELATERIA', ancho));

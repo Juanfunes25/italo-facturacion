@@ -16,7 +16,7 @@ dashboard.get('/', async (req, res) => {
 
     let ventasQuery = db
       .from('ventas')
-      .select('id, sucursal_id, total, isv_total, fecha_emision, sucursales(nombre, alias)')
+      .select('id, sucursal_id, total, isv_total, cambio, fecha_emision, sucursales(nombre, alias)')
       .eq('estado', 'pagada')
       .eq('anulada', false);
     if (sucursal_id) ventasQuery = ventasQuery.eq('sucursal_id', sucursal_id);
@@ -54,6 +54,13 @@ dashboard.get('/', async (req, res) => {
       const acc = porFormaPago.get(nombre) || { nombre, monto: 0 };
       acc.monto = round2(acc.monto + Number(p.monto));
       porFormaPago.set(nombre, acc);
+    }
+    // El efectivo recibido incluye el billete completo; el cambio devuelto
+    // no es venta en efectivo.
+    const cambioTotal = ventas.reduce((s, v) => s + Number(v.cambio ?? 0), 0);
+    if (cambioTotal > 0 && porFormaPago.has('Efectivo')) {
+      const ef = porFormaPago.get('Efectivo');
+      ef.monto = round2(ef.monto - cambioTotal);
     }
     const totalPagos = round2([...porFormaPago.values()].reduce((s, f) => s + f.monto, 0));
     const formasPago = [...porFormaPago.values()]

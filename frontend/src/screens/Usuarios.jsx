@@ -2,18 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 
-// Cajeros que no usan correo entran con un nombre de usuario (ej.
-// "maria.lopez"). Si se escribe un correo, se usa tal cual.
-const USUARIO_VALIDO = /^[a-z0-9._-]{3,30}$/;
-
-function problemaAcceso(acceso) {
-  const texto = acceso.trim().toLowerCase();
-  if (!texto) return null;
-  if (texto.includes('@')) return null;
-  if (/\s/.test(texto)) return 'Sin espacios — usa punto o guion, ej. maria.lopez';
-  if (!USUARIO_VALIDO.test(texto)) return 'De 3 a 30 caracteres: letras, números, punto, guion';
-  return null;
-}
+// Cajeros que no usan correo entran con un nombre de usuario libre
+// (ej. "María López", "caja 2"). Sin mínimo de contraseña: decisión de Juan.
+// La traducción a lo que pide Supabase la hace backend/lib/acceso.js.
 
 const VACIO = {
   acceso: '',
@@ -56,7 +47,7 @@ export default function Usuarios({ session, sucursales }) {
     try {
       await api.post('/usuarios', session, {
         ...form,
-        acceso: form.acceso.trim().toLowerCase(),
+        acceso: form.acceso.trim(),
         sucursal_id: form.sucursal_id || null,
       });
       setForm(VACIO);
@@ -79,7 +70,7 @@ export default function Usuarios({ session, sucursales }) {
   }
 
   async function restablecerContrasena(u) {
-    const nueva = window.prompt(`Nueva contraseña para ${u.nombre} (mínimo 6 caracteres):`);
+    const nueva = window.prompt(`Nueva contraseña para ${u.nombre} `);
     if (!nueva) return;
     try {
       await api.post(`/usuarios/${u.id}/reset-password`, session, { password: nueva });
@@ -96,7 +87,7 @@ export default function Usuarios({ session, sucursales }) {
         <h2>Nuevo usuario</h2>
         <div className="toolbar">
           <input
-            placeholder="Usuario (ej. maria.lopez) o correo"
+            placeholder="Usuario (ej. María López) o correo"
             autoCapitalize="none"
             value={form.acceso}
             onChange={(e) => setForm({ ...form, acceso: e.target.value })}
@@ -146,20 +137,17 @@ export default function Usuarios({ session, sucursales }) {
           <button
             className="boton-sm"
             disabled={
-              creando || !form.acceso.trim() || problemaAcceso(form.acceso) || form.password.length < 6 || !form.nombre
+              creando || !form.acceso.trim() || !form.password || !form.nombre.trim()
             }
             onClick={crear}
           >
             {creando ? 'Creando…' : 'Crear usuario'}
           </button>
         </div>
-        {problemaAcceso(form.acceso) && (
-          <p style={{ color: '#ffb86b', fontSize: '0.85em', marginTop: -4 }}>{problemaAcceso(form.acceso)}</p>
-        )}
-        {form.acceso.trim() && !problemaAcceso(form.acceso) && (
+        {form.acceso.trim() && (
           <p style={{ color: 'var(--text-dim)', fontSize: '0.85em', marginTop: -4 }}>
-            Entrará escribiendo <strong style={{ color: 'var(--text)' }}>{form.acceso.trim().toLowerCase()}</strong> y su
-            contraseña (mínimo 6 caracteres).
+            Entrará escribiendo <strong style={{ color: 'var(--text)' }}>{form.acceso.trim().replace(/\s+/g, ' ')}</strong> y su
+            contraseña. En el usuario no importan mayúsculas ni tildes; en la contraseña sí.
           </p>
         )}
       </div>

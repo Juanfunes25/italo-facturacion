@@ -22,7 +22,9 @@ const ACCIONES = {
   'usuario.editar': 'Editó usuario',
   'usuario.cambiar_contrasena': 'Cambió contraseña',
   'cai.editar': 'Modificó CAI/correlativo',
+  'cai.activar': 'Activó CAI real (SAR)',
   'cierre.crear': 'Cerró caja',
+  'sucursal.editar': 'Editó sucursal',
 };
 
 // Acciones que merecen atención inmediata al revisar la bitácora.
@@ -32,6 +34,7 @@ const SENSIBLES = new Set([
   'venta.nota_credito_parcial',
   'venta.reimprimir_ticket',
   'cai.editar',
+  'cai.activar',
   'usuario.cambiar_contrasena',
 ]);
 
@@ -72,10 +75,15 @@ function resumen(r) {
     case 'producto.editar':
     case 'usuario.editar':
     case 'cai.editar':
+    case 'cai.activar':
+    case 'sucursal.editar':
       return Object.entries(d.cambios ?? {})
         .map(([campo, c]) => `${campo}: ${c.antes ?? '—'} → ${c.despues ?? '—'}`)
         .join(' · ');
     case 'cierre.crear':
+      if (d.pos_bac != null) {
+        return `POS BAC L ${d.pos_bac} · Ficohsa L ${d.pos_ficohsa} (dif. L ${d.diferencia_tarjeta}) · Efectivo contado L ${d.total_contado} de L ${d.total_esperado} (dif. L ${d.diferencia_efectivo})`;
+      }
       return `Esperado L ${d.total_esperado} · Contado L ${d.total_contado} · Diferencia L ${d.diferencia}`;
     default:
       return d.total != null ? `L ${d.total}` : d.nota ?? '';

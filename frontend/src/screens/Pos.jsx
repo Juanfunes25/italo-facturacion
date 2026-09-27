@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { calcularTotales, OPCIONES_DESCUENTO } from '../lib/facturacion.js';
-import { colorSucursal } from '../lib/coloresSucursal.js';
+import { colorSucursal, nombreCortoSucursal } from '../lib/coloresSucursal.js';
 import { imprimirTicket, leerConfigImpresora, verPdf } from '../lib/documentos.js';
 import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
@@ -789,7 +789,8 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       <div className="pos-panel">
         {sucursalActual && (
           <div className="pos-sucursal-banner" style={{ background: colorSucursal(sucursalId) }}>
-            {sucursalActual.nombre}
+            <span className="pos-sucursal-banner-corto">{nombreCortoSucursal(sucursalActual.nombre)}</span>
+            <span className="pos-sucursal-banner-legal">{sucursalActual.nombre}</span>
           </div>
         )}
         {sinPuntoEmision && (

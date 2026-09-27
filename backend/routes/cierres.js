@@ -1,26 +1,158 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
+import { calcularCuadre, totalesPorForma } from '../lib/cierre.js';
 import { enviarResumenCierre } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { anchoValido, envolverTicketHtml, formatearCierre } from '../lib/ticket.js';
 
 export const cierres = Router();
 
+const ZONA = 'America/Tegucigalpa';
+const CAMPOS_SISTEMA = [
+  'efectivo_sistema',
+  'tarjeta_sistema',
+  'transferencia_sistema',
+  'total_esperado',
+  'diferencia',
+  'diferencia_tarjeta',
+  'diferencia_efectivo',
+  'total_ventas',
+  'desglose_pagos',
+];
+const SELECT_CIERRE = '*, sucursales(nombre, alias), cajero:cajero_id(nombre), elaboro:elaboro_id(nombre)';
+
+// Cierre ciego: el cajero cuenta sin ver cuánto "debería" haber, para que
+// no ajuste el conteo al número del sistema. El servidor ni siquiera le
+// manda esas cifras (no basta con esconderlas en pantalla).
+function esCiego(perfil) {
+  return perfil.cierre_ciego && perfil.rol === 'cajero';
+}
+
+function sinSistema(cierre) {
+  const copia = { ...cierre };
+  for (const campo of CAMPOS_SISTEMA) delete copia[campo];
+  return copia;
+}
+
+// Un cajero con sucursal fija sólo puede cerrar la suya.
+function sucursalPermitida(perfil, sucursalId) {
+  return !(perfil.rol === 'cajero' && perfil.sucursal_id && perfil.sucursal_id !== sucursalId);
+}
+
+function fechaLocal(iso) {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: ZONA }); // YYYY-MM-DD
+}
+
+// Supabase devuelve máximo 1000 filas por consulta: un día de mucho
+// movimiento puede pasarse, así que se pide por páginas.
+async function ventasDelTurno(sucursal_id, desde, hasta) {
+  const todas = [];
+  for (let desdeFila = 0; ; desdeFila += 1000) {
+    const { data, error } = await db
+      .from('ventas')
+      .select('id, total, numero_factura, correlativo, anulada, cambio, venta_pagos(monto, formas_pago(nombre))')
+      .eq('sucursal_id', sucursal_id)
+      .eq('estado', 'pagada')
+      .gte('fecha_emision', desde)
+      .lte('fecha_emision', hasta)
+      .order('correlativo', { ascending: true })
+      .range(desdeFila, desdeFila + 999);
+    if (error) throw new Error(error.message);
+    todas.push(...data);
+    if (data.length < 1000) return todas;
+  }
+}
+
+async function resumenTurno(sucursal_id, desde, hasta) {
+  const ventas = await ventasDelTurno(sucursal_id, desde, hasta);
+  const t = totalesPorForma(ventas);
+
+  // Salidas sugeridas: lo registrado en caja chica esos días (editable).
+  const { data: gastos } = await db
+    .from('caja_chica')
+    .select('monto')
+    .eq('sucursal_id', sucursal_id)
+    .gte('fecha', fechaLocal(desde))
+    .lte('fecha', fechaLocal(hasta));
+
+  return {
+    ...t,
+    cantidad_facturas: ventas.length,
+    factura_desde: ventas[0]?.numero_factura ?? null,
+    factura_hasta: ventas[ventas.length - 1]?.numero_factura ?? null,
+    salidas_sugeridas: round2((gastos ?? []).reduce((s, g) => s + Number(g.monto), 0)),
+  };
+}
+
+function validarRango(desde, hasta) {
+  if (!desde || !hasta) return 'Faltan las fechas del turno';
+  const a = new Date(desde);
+  const b = new Date(hasta);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 'Fechas del turno inválidas';
+  if (b <= a) return 'La hora de cierre debe ser posterior a la de apertura';
+  if (b.getTime() > Date.now() + 5 * 60 * 1000) return 'La hora de cierre no puede estar en el futuro';
+  return null;
+}
+
+// Último cierre de la sucursal: de ahí arranca el turno siguiente y se
+// sugiere el mismo fondo de caja.
+cierres.get('/ultimo', async (req, res) => {
+  const { sucursal_id } = req.query;
+  if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
+  const { data, error } = await db
+    .from('cierres_caja')
+    .select('fecha_fin, fondo_caja')
+    .eq('sucursal_id', sucursal_id)
+    .order('fecha_fin', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? null);
+});
+
+cierres.get('/resumen', async (req, res) => {
+  try {
+    const { sucursal_id, desde, hasta } = req.query;
+    if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
+    if (!sucursalPermitida(req.perfil, sucursal_id)) return res.status(403).json({ error: 'No puedes cerrar otra sucursal' });
+    const problema = validarRango(desde, hasta);
+    if (problema) return res.status(400).json({ error: problema });
+
+    const resumen = await resumenTurno(sucursal_id, desde, hasta);
+    if (esCiego(req.perfil)) {
+      return res.json({
+        ciego: true,
+        cantidad_facturas: resumen.cantidad_facturas,
+        factura_desde: resumen.factura_desde,
+        factura_hasta: resumen.factura_hasta,
+        salidas_sugeridas: resumen.salidas_sugeridas,
+      });
+    }
+    res.json({ ciego: false, ...resumen });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 cierres.post('/', async (req, res) => {
   try {
-    const {
-      sucursal_id,
-      cajero_id,
-      fecha_inicio,
-      fecha_fin,
-      efectivo_contado,
-      fondo_caja,
-      salidas,
-      propinas,
-      descuentos,
-    } = req.body;
-    if (!sucursal_id || !fecha_inicio || !fecha_fin) {
-      return res.status(400).json({ error: 'sucursal_id, fecha_inicio y fecha_fin son obligatorios' });
+    const { sucursal_id, fecha_inicio, fecha_fin, observaciones } = req.body;
+    if (!sucursal_id) return res.status(400).json({ error: 'Falta la sucursal' });
+    if (!sucursalPermitida(req.perfil, sucursal_id)) return res.status(403).json({ error: 'No puedes cerrar otra sucursal' });
+    const problema = validarRango(fecha_inicio, fecha_fin);
+    if (problema) return res.status(400).json({ error: problema });
+
+    for (const campo of ['pos_bac', 'pos_ficohsa', 'efectivo_contado', 'fondo_caja', 'salidas']) {
+      const v = req.body[campo];
+      if (v === undefined || v === null || v === '') {
+        if (['pos_bac', 'pos_ficohsa', 'efectivo_contado'].includes(campo)) {
+          return res.status(400).json({ error: 'Llena POS BAC, POS Ficohsa y el efectivo contado (usa 0 si no hubo)' });
+        }
+        continue;
+      }
+      if (!Number.isFinite(Number(v)) || Number(v) < 0) return res.status(400).json({ error: `Monto inválido en ${campo}` });
     }
 
     // Evita cerrar dos veces el mismo turno (o turnos que se traslapan) en la
@@ -34,109 +166,88 @@ cierres.post('/', async (req, res) => {
     if (errSolape) throw new Error(errSolape.message);
     if (solapados.length > 0) {
       const c = solapados[0];
+      const fmt = (f) => new Date(f).toLocaleString('es-HN', { timeZone: ZONA });
       return res.status(409).json({
-        error: `Ya existe un cierre en ese rango (del ${new Date(c.fecha_inicio).toLocaleString('es-HN')} al ${new Date(c.fecha_fin).toLocaleString('es-HN')}). Ajusta las fechas para no contar las mismas facturas dos veces.`,
+        error: `Ya existe un cierre en ese rango (del ${fmt(c.fecha_inicio)} al ${fmt(c.fecha_fin)}). Ajusta las fechas para no contar las mismas facturas dos veces.`,
       });
     }
 
-    const { data: ventasDelTurno, error } = await db
-      .from('ventas')
-      .select('id, total, numero_factura, correlativo, anulada')
-      .eq('sucursal_id', sucursal_id)
-      .eq('estado', 'pagada')
-      .gte('fecha_emision', fecha_inicio)
-      .lte('fecha_emision', fecha_fin)
-      .order('correlativo', { ascending: true });
-    if (error) throw new Error(error.message);
+    // El sistema se recalcula acá, nunca se toma lo que mande la pantalla.
+    const sistema = await resumenTurno(sucursal_id, fecha_inicio, fecha_fin);
+    const cuadre = calcularCuadre(sistema, req.body);
 
-    // El correlativo emitido cuenta igual (nunca se le quita el número a una
-    // factura anulada), pero el efectivo que se devolvió al anularla no debe
-    // sumar al total esperado en caja.
-    const ventasValidas = ventasDelTurno.filter((v) => !v.anulada);
-    const totalVentas = round2(ventasValidas.reduce((s, v) => s + Number(v.total), 0));
-    const factura_desde = ventasDelTurno[0]?.numero_factura ?? null;
-    const factura_hasta = ventasDelTurno[ventasDelTurno.length - 1]?.numero_factura ?? null;
-
-    // Desglose por forma de pago (efectivo/tarjeta/transferencia) del turno.
-    let desglosePagos = [];
-    if (ventasValidas.length > 0) {
-      const { data: pagosDb, error: errPagos } = await db
-        .from('venta_pagos')
-        .select('monto, formas_pago(nombre)')
-        .in(
-          'venta_id',
-          ventasValidas.map((v) => v.id)
-        );
-      if (errPagos) throw new Error(errPagos.message);
-      const porForma = new Map();
-      for (const p of pagosDb) {
-        const nombre = p.formas_pago?.nombre ?? 'Otro';
-        porForma.set(nombre, round2((porForma.get(nombre) || 0) + Number(p.monto)));
-      }
-      desglosePagos = [...porForma.entries()].map(([nombre, monto]) => ({ nombre, monto }));
+    const noCuadra = Math.abs(cuadre.diferencia_tarjeta) >= 1 || Math.abs(cuadre.diferencia_efectivo) >= 1;
+    if (noCuadra && !esCiego(req.perfil) && !String(observaciones ?? '').trim()) {
+      return res.status(400).json({ error: 'El cierre no cuadra: escribe en Observaciones qué pasó con la diferencia' });
     }
-
-    const total_esperado = round2(totalVentas + Number(fondo_caja || 0) - Number(salidas || 0));
-    const total_contado = round2(Number(efectivo_contado || 0));
-    const diferencia = round2(total_contado - total_esperado);
 
     const { data: cierre, error: errInsert } = await db
       .from('cierres_caja')
       .insert({
         sucursal_id,
-        cajero_id: cajero_id ?? req.perfil.id,
+        cajero_id: req.perfil.id,
         elaboro_id: req.perfil.id,
         fecha_inicio,
         fecha_fin,
-        efectivo_contado: total_contado,
-        fondo_caja: fondo_caja || 0,
-        salidas: salidas || 0,
-        propinas: propinas || 0,
-        descuentos: descuentos || 0,
-        factura_desde,
-        factura_hasta,
-        total_esperado,
-        total_contado,
-        diferencia,
-        desglose_pagos: desglosePagos,
+        efectivo_contado: cuadre.efectivo_contado,
+        fondo_caja: cuadre.fondo_caja,
+        salidas: cuadre.salidas,
+        factura_desde: sistema.factura_desde,
+        factura_hasta: sistema.factura_hasta,
+        cantidad_facturas: sistema.cantidad_facturas,
+        total_ventas: sistema.total_ventas,
+        efectivo_sistema: sistema.efectivo,
+        tarjeta_sistema: sistema.tarjeta,
+        transferencia_sistema: sistema.transferencia,
+        pos_bac: cuadre.pos_bac,
+        pos_ficohsa: cuadre.pos_ficohsa,
+        diferencia_tarjeta: cuadre.diferencia_tarjeta,
+        diferencia_efectivo: cuadre.diferencia_efectivo,
+        total_esperado: cuadre.efectivo_esperado,
+        total_contado: cuadre.efectivo_contado,
+        diferencia: cuadre.diferencia_total,
+        desglose_pagos: [
+          { nombre: 'Efectivo', monto: sistema.efectivo },
+          { nombre: 'Tarjeta', monto: sistema.tarjeta },
+          { nombre: 'Transferencia', monto: sistema.transferencia },
+        ],
+        observaciones: String(observaciones ?? '').trim() || null,
         cierre_ciego: req.perfil.cierre_ciego,
         estado: 'cerrado',
       })
-      .select()
+      .select(SELECT_CIERRE)
       .single();
     if (errInsert) throw new Error(errInsert.message);
 
-    const { data: sucursal } = await db.from('sucursales').select('nombre').eq('id', sucursal_id).single();
-    const resultado = { ...cierre, cantidad_facturas: ventasDelTurno.length, total_ventas: totalVentas };
     await registrarAuditoria(req, {
       accion: 'cierre.crear',
       entidad: 'cierre',
       entidadId: cierre.id,
       sucursalId: sucursal_id,
       detalle: {
-        factura_desde,
-        factura_hasta,
-        total_esperado,
-        total_contado,
-        diferencia,
+        factura_desde: sistema.factura_desde,
+        factura_hasta: sistema.factura_hasta,
+        total_esperado: cuadre.efectivo_esperado,
+        total_contado: cuadre.efectivo_contado,
+        diferencia: cuadre.diferencia_total,
+        diferencia_tarjeta: cuadre.diferencia_tarjeta,
+        diferencia_efectivo: cuadre.diferencia_efectivo,
+        pos_bac: cuadre.pos_bac,
+        pos_ficohsa: cuadre.pos_ficohsa,
       },
     });
-    // No bloquea la respuesta del cierre si el correo falla o no está
-    // configurado — es una utilidad extra, no una condición para cerrar.
-    enviarResumenCierre(resultado, sucursal?.nombre ?? '').catch(() => {});
+    // No bloquea el cierre si el correo falla o no está configurado.
+    enviarResumenCierre(cierre, cierre.sucursales?.nombre ?? '').catch(() => {});
 
-    res.status(201).json(resultado);
+    res.status(201).json(esCiego(req.perfil) ? sinSistema(cierre) : cierre);
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-cierres.get('/', async (req, res) => {
+cierres.get('/', requireRole('admin', 'manager'), async (req, res) => {
   const { sucursal_id, fechaInicio, fechaFin } = req.query;
-  let query = db
-    .from('cierres_caja')
-    .select('*, sucursales(nombre, alias), cajero:cajero_id(nombre), elaboro:elaboro_id(nombre)')
-    .order('fecha_fin', { ascending: false });
+  let query = db.from('cierres_caja').select(SELECT_CIERRE).order('fecha_fin', { ascending: false }).limit(200);
   if (sucursal_id) query = query.eq('sucursal_id', sucursal_id);
   if (fechaInicio) query = query.gte('fecha_inicio', fechaInicio);
   if (fechaFin) query = query.lte('fecha_fin', fechaFin);
@@ -145,12 +256,22 @@ cierres.get('/', async (req, res) => {
   res.json(data);
 });
 
+async function cierrePermitido(req) {
+  const { data } = await db.from('cierres_caja').select(SELECT_CIERRE).eq('id', req.params.id).maybeSingle();
+  if (!data) return null;
+  if (req.perfil.rol === 'cajero' && data.cajero_id !== req.perfil.id) return null;
+  return data;
+}
+
+cierres.get('/:id/ticket', async (req, res) => {
+  const cierre = await cierrePermitido(req);
+  if (!cierre) return res.status(404).json({ error: 'Cierre no encontrado' });
+  const ancho = anchoValido(req.query.columnas);
+  res.type('text/html').send(envolverTicketHtml(formatearCierre(cierre, ancho, { ocultarSistema: esCiego(req.perfil) }), ancho));
+});
+
 cierres.get('/:id', async (req, res) => {
-  const { data, error } = await db
-    .from('cierres_caja')
-    .select('*, sucursales(nombre, alias), cajero:cajero_id(nombre), elaboro:elaboro_id(nombre)')
-    .eq('id', req.params.id)
-    .single();
-  if (error || !data) return res.status(404).json({ error: 'Cierre no encontrado' });
-  res.json(data);
+  const cierre = await cierrePermitido(req);
+  if (!cierre) return res.status(404).json({ error: 'Cierre no encontrado' });
+  res.json(esCiego(req.perfil) ? sinSistema(cierre) : cierre);
 });
