@@ -483,6 +483,18 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
     mostrarToast('Pedido repetido — revisa y cobra');
   }
 
+  // Un solo botón, un solo toque: Efectivo y Tarjeta cobran de inmediato el
+  // total exacto, sin abrir el modal ni tener que elegir la forma de pago
+  // de una lista. "Más formas de pago" (dividir el pago, o efectivo con
+  // cambio) queda como opción secundaria para el caso raro.
+  function pagoInstantaneo(forma) {
+    if (guardandoPago || carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn) return;
+    confirmarPago({
+      pagos: [{ forma, monto: totales.total.toFixed(2) }],
+      efectivo: forma === 'efectivo' ? totales.total : 0,
+    });
+  }
+
   async function confirmarPago({ pagos, efectivo }) {
     setGuardandoPago(true);
     setError('');
@@ -787,14 +799,61 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
               Buscar
             </button>
           )}
+        </div>
+
+        {/* Un solo toque cobra de inmediato — nada de abrir un menú y
+            después elegir. Efectivo y Tarjeta bien separados para que no
+            se confundan a la hora de cobrar. */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 14,
+            marginTop: 10,
+          }}
+        >
           <button
-            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision}
-            onClick={() => setMostrarPago(true)}
-            style={{ gridColumn: '1 / -1' }}
+            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago}
+            onClick={() => pagoInstantaneo('efectivo')}
+            style={{
+              background: '#19703c',
+              padding: '18px 8px',
+              fontSize: '1.05em',
+              borderRadius: 10,
+            }}
           >
-            Procesar Pago
+            💵
+            <br />
+            EFECTIVO
+          </button>
+          <button
+            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago}
+            onClick={() => pagoInstantaneo('tarjeta')}
+            style={{
+              background: '#2a6fb0',
+              padding: '18px 8px',
+              fontSize: '1.05em',
+              borderRadius: 10,
+            }}
+          >
+            💳
+            <br />
+            TARJETA
           </button>
         </div>
+        {guardandoPago && (
+          <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85em', marginTop: 6 }}>
+            Procesando…
+          </p>
+        )}
+        <button
+          className="boton-secundario boton-sm"
+          style={{ marginTop: 8 }}
+          disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision}
+          onClick={() => setMostrarPago(true)}
+        >
+          Más formas de pago (dividir, transferencia, cambio)
+        </button>
       </div>
     </div>
   );
