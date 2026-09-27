@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { BarraHorizontal, BarrasVerticales, Leyenda } from '../components/Graficas.jsx';
+import { colorSucursal } from '../lib/coloresSucursal.js';
 
-const PALETA = ['var(--serie-1)', 'var(--serie-2)', 'var(--serie-3)', 'var(--serie-4)'];
 const COLOR_FORMA_PAGO = { Efectivo: 'var(--serie-1)', Tarjeta: 'var(--serie-2)', Transferencia: 'var(--serie-3)' };
 
 function primerDiaMes() {
@@ -18,14 +18,6 @@ export default function Dashboard({ session, sucursales }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
-
-  // Color fijo por sucursal, estable entre renders (no depende del orden
-  // por total, que cambia según el rango de fechas consultado).
-  const colorPorSucursal = useMemo(() => {
-    const mapa = new Map();
-    sucursales.forEach((s, i) => mapa.set(s.id, PALETA[i % PALETA.length]));
-    return mapa;
-  }, [sucursales]);
 
   async function consultar() {
     setCargando(true);
@@ -113,13 +105,13 @@ export default function Dashboard({ session, sucursales }) {
             <Leyenda
               items={datos.por_sucursal.map((s) => ({
                 nombre: s.nombre,
-                color: colorPorSucursal.get(s.sucursal_id) ?? 'var(--serie-1)',
+                color: colorSucursal(s.sucursal_id),
               }))}
             />
             <BarraHorizontal
               datos={datos.por_sucursal.map((s) => ({
                 ...s,
-                color: colorPorSucursal.get(s.sucursal_id) ?? 'var(--serie-1)',
+                color: colorSucursal(s.sucursal_id),
               }))}
               valorClave="total"
               etiquetaClave="nombre"

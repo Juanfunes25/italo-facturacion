@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { colorSucursal } from '../lib/coloresSucursal.js';
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 16);
@@ -60,6 +61,11 @@ export default function Cierres({ session, perfil, sucursales }) {
       <div className="panel">
         <h2>Cierre de caja</h2>
         <div className="toolbar">
+          <span
+            className="leyenda-punto"
+            style={{ background: colorSucursal(form.sucursal_id), display: 'inline-block' }}
+            title="Color de la sucursal"
+          />
           <select value={form.sucursal_id} onChange={(e) => setForm({ ...form, sucursal_id: e.target.value })}>
             {sucursales.map((s) => (
               <option key={s.id} value={s.id}>
@@ -165,7 +171,13 @@ export default function Cierres({ session, perfil, sucursales }) {
               {historial.map((c) => (
                 <tr key={c.id}>
                   <td>{new Date(c.fecha_fin).toLocaleDateString('es-HN')}</td>
-                  <td>{c.sucursales?.nombre}</td>
+                  <td>
+                    <span
+                      className="leyenda-punto"
+                      style={{ background: colorSucursal(c.sucursal_id), display: 'inline-block', marginRight: 6 }}
+                    />
+                    {c.sucursales?.nombre}
+                  </td>
                   <td>{c.cajero?.nombre ?? '—'}</td>
                   <td>{c.factura_desde ?? '—'}</td>
                   <td>{c.factura_hasta ?? '—'}</td>

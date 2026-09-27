@@ -1,14 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { colorSucursal } from '../lib/coloresSucursal.js';
+import { descargarCsv } from '../lib/csv.js';
 
 export default function Facturas({ session, perfil, sucursales }) {
   const [filtros, setFiltros] = useState({ sucursal_id: '', fechaInicio: '', fechaFin: '', q: '' });
+  const [cajeroFiltro, setCajeroFiltro] = useState('');
   const [facturas, setFacturas] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
   const [error, setError] = useState('');
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const [montoAnulacion, setMontoAnulacion] = useState('');
   const [notasCredito, setNotasCredito] = useState([]);
+
+  const cajerosDisponibles = useMemo(
+    () => [...new Set(facturas.map((f) => f.perfiles?.nombre).filter(Boolean))].sort(),
+    [facturas]
+  );
+  const facturasVisibles = useMemo(
+    () => (cajeroFiltro ? facturas.filter((f) => f.perfiles?.nombre === cajeroFiltro) : facturas),
+    [facturas, cajeroFiltro]
+  );
+
+  function exportarCsv() {
+    descargarCsv(
+      `facturas-${new Date().toISOString().slice(0, 10)}.csv`,
+      facturasVisibles,
+      [
+        { titulo: 'No. Orden', valor: (f) => f.numero_orden },
+        { titulo: 'Fecha', valor: (f) => (f.fecha_emision ? new Date(f.fecha_emision).toLocaleString('es-HN') : '') },
+        { titulo: 'No. Factura', valor: (f) => f.numero_factura },
+        { titulo: 'Cliente', valor: (f) => f.clientes?.nombre ?? 'Consumidor Final' },
+        { titulo: 'RTN', valor: (f) => f.clientes?.rtn ?? '' },
+        { titulo: 'Impuesto', valor: (f) => Number(f.isv_total).toFixed(2) },
+        { titulo: 'Total', valor: (f) => Number(f.total).toFixed(2) },
+        { titulo: 'Cajero', valor: (f) => f.perfiles?.nombre ?? '' },
+        { titulo: 'Anulada', valor: (f) => (f.anulada ? 'Sí' : 'No') },
+      ]
+    );
+  }
 
   async function buscar() {
     const params = new URLSearchParams({ estado: 'pagada' });
@@ -66,11 +96,25 @@ export default function Facturas({ session, perfil, sucursales }) {
           <button className="boton-sm" onClick={buscar}>
             Buscar
           </button>
+          {cajerosDisponibles.length > 1 && (
+            <select value={cajeroFiltro} onChange={(e) => setCajeroFiltro(e.target.value)}>
+              <option value="">Todos los cajeros</option>
+              {cajerosDisponibles.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+          <button className="boton-sm boton-secundario" onClick={exportarCsv} disabled={facturasVisibles.length === 0}>
+            Exportar CSV
+          </button>
         </div>
 
         <table className="tabla">
           <thead>
             <tr>
+              <th>Sucursal</th>
               <th>No. Orden</th>
               <th>Fecha</th>
               <th>No. Factura</th>
@@ -83,8 +127,15 @@ export default function Facturas({ session, perfil, sucursales }) {
             </tr>
           </thead>
           <tbody>
-            {facturas.map((f) => (
+            {facturasVisibles.map((f) => (
               <tr key={f.id} style={f.anulada ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}>
+                <td>
+                  <span
+                    className="leyenda-punto"
+                    style={{ background: colorSucursal(f.sucursal_id), display: 'inline-block' }}
+                    title="Sucursal"
+                  />
+                </td>
                 <td>{f.numero_orden}</td>
                 <td>{f.fecha_emision ? new Date(f.fecha_emision).toLocaleString('es-HN') : '—'}</td>
                 <td>{f.numero_factura}</td>
@@ -97,6 +148,11 @@ export default function Facturas({ session, perfil, sucursales }) {
                   <button className="boton-sm boton-secundario" onClick={() => verDetalle(f.id)}>
                     Ver
                   </button>
+                  {f.correo_enviado === false && (
+                    <span title={`No se pudo enviar el correo: ${f.correo_error ?? ''}`} style={{ marginLeft: 6 }}>
+                      ✉️⚠️
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { calcularTotales } from '../lib/facturacion.js';
+import { colorSucursal } from '../lib/coloresSucursal.js';
 
 const CONSUMIDOR_FINAL_NOMBRE = 'Consumidor Final';
 const UMBRAL_RTN_OBLIGATORIO = 10000;
@@ -517,6 +518,12 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
 
   const sucursalActual = sucursales.find((s) => s.id === sucursalId);
 
+  function cambiarSucursal(nuevoId) {
+    const nombre = sucursales.find((s) => s.id === nuevoId)?.nombre ?? '';
+    if (!window.confirm(`¿Cambiar a "${nombre}"? Vas a facturar ahí hasta que la cambies de nuevo.`)) return;
+    setSucursalId(nuevoId);
+  }
+
   return (
     <div className="pos-grid">
       {toast && (
@@ -638,13 +645,31 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
       </div>
 
       <div className="pos-panel">
-        {sucursalActual && <div style={{ fontWeight: 700, color: 'var(--gold)', marginBottom: 6 }}>{sucursalActual.nombre}</div>}
-        {sucursales.length > 1 && (
-          <select
-            value={sucursalId}
-            disabled={carrito.length > 0}
-            onChange={(e) => setSucursalId(e.target.value)}
+        {sucursalActual && (
+          <div
+            style={{
+              background: colorSucursal(sucursalId),
+              color: '#fff',
+              fontWeight: 700,
+              padding: '10px 12px',
+              borderRadius: 8,
+              marginBottom: 10,
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontSize: '1.2em',
+              textTransform: 'uppercase',
+              letterSpacing: '0.03em',
+              textAlign: 'center',
+            }}
           >
+            {sucursalActual.nombre}
+          </div>
+        )}
+        {/* Un cajero con sucursal fija (perfil.sucursal_id) NUNCA ve el
+            selector — así no hay forma de cobrar por error en otra
+            sucursal. Sólo admin/manager (sin sucursal fija) pueden
+            cambiar, y se les pide confirmar cada vez. */}
+        {!perfil.sucursal_id && sucursales.length > 1 && (
+          <select value={sucursalId} disabled={carrito.length > 0} onChange={(e) => cambiarSucursal(e.target.value)}>
             {sucursales.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.nombre}

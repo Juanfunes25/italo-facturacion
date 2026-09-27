@@ -235,14 +235,24 @@ ventas.post('/:id/pagar', async (req, res) => {
       .single();
 
     // Correo con el PDF adjunto si el cliente tiene correo — no bloquea la
-    // respuesta del cobro ni falla la venta si el correo no está configurado.
+    // respuesta del cobro. El resultado se guarda en la venta para poder
+    // avisar en el listado de facturas si falló, en vez de fallar en silencio.
     if (venta.clientes?.email) {
       obtenerVentaCompleta(venta.id)
         .then(async (ventaCompleta) => {
           const pdfBuffer = await generarPdfFacturaBuffer(ventaCompleta);
-          await enviarFacturaCliente(ventaCompleta, pdfBuffer);
+          const resultado = await enviarFacturaCliente(ventaCompleta, pdfBuffer);
+          await db
+            .from('ventas')
+            .update({ correo_enviado: resultado.enviado, correo_error: resultado.motivo ?? null })
+            .eq('id', venta.id);
         })
-        .catch(() => {});
+        .catch((e) => {
+          db.from('ventas').update({ correo_enviado: false, correo_error: e.message }).eq('id', venta.id).then(
+            () => {},
+            () => {}
+          );
+        });
     }
 
     res.json({ ...ventaFinal, es_borrador: puntoEmision?.es_borrador ?? true });

@@ -22,6 +22,22 @@ cierres.post('/', async (req, res) => {
       return res.status(400).json({ error: 'sucursal_id, fecha_inicio y fecha_fin son obligatorios' });
     }
 
+    // Evita cerrar dos veces el mismo turno (o turnos que se traslapan) en la
+    // misma sucursal — eso duplicaría las facturas contadas en el total.
+    const { data: solapados, error: errSolape } = await db
+      .from('cierres_caja')
+      .select('id, fecha_inicio, fecha_fin')
+      .eq('sucursal_id', sucursal_id)
+      .lt('fecha_inicio', fecha_fin)
+      .gt('fecha_fin', fecha_inicio);
+    if (errSolape) throw new Error(errSolape.message);
+    if (solapados.length > 0) {
+      const c = solapados[0];
+      return res.status(409).json({
+        error: `Ya existe un cierre en ese rango (del ${new Date(c.fecha_inicio).toLocaleString('es-HN')} al ${new Date(c.fecha_fin).toLocaleString('es-HN')}). Ajusta las fechas para no contar las mismas facturas dos veces.`,
+      });
+    }
+
     const { data: ventasDelTurno, error } = await db
       .from('ventas')
       .select('id, total, numero_factura, correlativo, anulada')
