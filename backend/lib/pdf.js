@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'node:stream';
+import { etiquetaDescuento } from './ticket.js';
 
 // Factura completa tamaño carta, para descargar o enviar por correo.
 export function generarPdfFactura(venta, res) {
@@ -30,8 +31,8 @@ export function generarPdfFactura(venta, res) {
   }
   doc.moveDown();
 
-  doc.text(`Cliente: ${venta.clientes?.nombre ?? 'Consumidor Final'}`);
-  doc.text(`RTN: ${venta.clientes?.rtn ?? 'N/A'}`);
+  doc.text(`Cliente: ${venta.clientes?.nombre || 'Consumidor Final'}`);
+  doc.text(`RTN: ${venta.clientes?.rtn || 'N/A'}`);
   doc.text(`Cajero: ${venta.perfiles?.nombre ?? ''}`);
   doc.moveDown();
 
@@ -51,7 +52,8 @@ export function generarPdfFactura(venta, res) {
     doc.text(item.nombre_producto, 50, y, { width: 220 });
     doc.text(String(item.cantidad), 270, y, { width: 50, align: 'right' });
     doc.text(`L ${Number(item.precio_unitario).toFixed(2)}`, 320, y, { width: 80, align: 'right' });
-    doc.text(`L ${Number(item.monto).toFixed(2)}`, 400, y, { width: 100, align: 'right' });
+    const bruto = Number(item.cantidad) * Number(item.precio_unitario);
+    doc.text(`L ${bruto.toFixed(2)}`, 400, y, { width: 100, align: 'right' });
     doc.moveDown();
   }
 
@@ -60,16 +62,16 @@ export function generarPdfFactura(venta, res) {
 
   const filaTotal = (etiqueta, monto) => {
     const y = doc.y;
-    doc.text(etiqueta, 320, y, { width: 80, align: 'right' });
+    doc.text(etiqueta, 220, y, { width: 180, align: 'right' });
     doc.text(`L ${Number(monto).toFixed(2)}`, 400, y, { width: 100, align: 'right' });
     doc.moveDown();
   };
 
+  if (Number(venta.descuento) > 0) filaTotal(`${etiquetaDescuento(venta)}:`, -Number(venta.descuento));
   filaTotal('Exento:', venta.subtotal_exento);
   filaTotal('Exonerado:', venta.subtotal_exonerado);
   filaTotal('Gravado 15%:', venta.subtotal_gravado_15);
-  filaTotal('ISV:', venta.isv_total);
-  filaTotal('Descuento:', venta.descuento);
+  filaTotal('ISV 15%:', venta.isv_total);
   doc.font('Helvetica-Bold');
   filaTotal('TOTAL:', venta.total);
   doc.font('Helvetica');

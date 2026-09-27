@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
 import { enviarResumenCierre } from '../lib/correo.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const cierres = Router();
 
@@ -107,6 +108,19 @@ cierres.post('/', async (req, res) => {
 
     const { data: sucursal } = await db.from('sucursales').select('nombre').eq('id', sucursal_id).single();
     const resultado = { ...cierre, cantidad_facturas: ventasDelTurno.length, total_ventas: totalVentas };
+    await registrarAuditoria(req, {
+      accion: 'cierre.crear',
+      entidad: 'cierre',
+      entidadId: cierre.id,
+      sucursalId: sucursal_id,
+      detalle: {
+        factura_desde,
+        factura_hasta,
+        total_esperado,
+        total_contado,
+        diferencia,
+      },
+    });
     // No bloquea la respuesta del cierre si el correo falla o no está
     // configurado — es una utilidad extra, no una condición para cerrar.
     enviarResumenCierre(resultado, sucursal?.nombre ?? '').catch(() => {});

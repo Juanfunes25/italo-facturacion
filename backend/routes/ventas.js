@@ -1,16 +1,22 @@
 import { Router } from 'express';
 import { db } from '../db.js';
-import { calcularTotales, round2 } from '../lib/facturacion.js';
+import {
+  calcularTotales,
+  descuentoPorPorcentaje,
+  PORCENTAJES_DESCUENTO,
+  round2,
+} from '../lib/facturacion.js';
 import { generarPdfFacturaBuffer } from '../lib/pdf.js';
 import { enviarFacturaCliente } from '../lib/correo.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const ventas = Router();
 
 // Monto a partir del cual se exige RTN del cliente (mismo criterio que el
 // "limiteRTN" que ya usaba WizPOS para esta empresa: L10,000).
-const UMBRAL_RTN_OBLIGATORIO = 10000;
+export const UMBRAL_RTN_OBLIGATORIO = 10000;
 
-async function obtenerPuntoEmisionActivo(sucursal_id) {
+export async function obtenerPuntoEmisionActivo(sucursal_id) {
   const { data, error } = await db
     .from('puntos_emision')
     .select('*')
@@ -21,13 +27,29 @@ async function obtenerPuntoEmisionActivo(sucursal_id) {
   return data;
 }
 
-async function obtenerCliente(cliente_id) {
-  if (!cliente_id) {
-    const { data } = await db.from('clientes').select('*').eq('es_consumidor_final', true).single();
-    return data;
+// Sin cliente (o con un id que ya no existe) la factura SIEMPRE sale a
+// nombre de Consumidor Final — nunca queda una venta sin cliente asignado.
+export async function obtenerCliente(cliente_id) {
+  if (cliente_id) {
+    const { data } = await db.from('clientes').select('*').eq('id', cliente_id).maybeSingle();
+    if (data) return data;
   }
-  const { data } = await db.from('clientes').select('*').eq('id', cliente_id).single();
-  return data;
+  const { data: consumidorFinal } = await db
+    .from('clientes')
+    .select('*')
+    .eq('es_consumidor_final', true)
+    .limit(1)
+    .maybeSingle();
+  if (!consumidorFinal) throw new Error('No existe el cliente "Consumidor Final" en la base de datos');
+  return consumidorFinal;
+}
+
+function validarPorcentaje(valor) {
+  const porcentaje = Number(valor ?? 0);
+  if (!PORCENTAJES_DESCUENTO.includes(porcentaje)) {
+    throw new Error('El descuento sólo puede ser 10% o 25% (tercera edad)');
+  }
+  return porcentaje;
 }
 
 async function construirItems(itemsSolicitados, puedeEditarPrecio) {
@@ -46,7 +68,7 @@ async function construirItems(itemsSolicitados, puedeEditarPrecio) {
       nombre_producto: producto.nombre,
       cantidad: Number(item.cantidad),
       precio_unitario,
-      descuento: Number(item.descuento || 0),
+      descuento: 0,
       impuesto_tasa: producto.impuesto1_tasa,
     };
   });
@@ -54,15 +76,12 @@ async function construirItems(itemsSolicitados, puedeEditarPrecio) {
 
 // calcularLineas() (backend/lib/facturacion.js) agrega "base", "isv" y
 // "bucket" a cada línea para calcular los subtotales fiscales — son campos
-// de trabajo, no columnas de la tabla. Antes se insertaban tal cual junto
-// con el resto, y Postgres rechazaba el insert entero ("Could not find the
-// 'base' column of 'detalle_venta'"), lo que hacía fallar SIEMPRE el
-// guardado de la orden (autoguardado, y por lo tanto también el cobro).
-async function guardarDetalle(venta_id, lineas) {
+// de trabajo, no columnas de la tabla, así que se arma la fila explícita.
+export async function guardarDetalle(venta_id, lineas) {
   await db.from('detalle_venta').delete().eq('venta_id', venta_id);
   const filas = lineas.map((l) => ({
     venta_id,
-    producto_id: l.producto_id,
+    producto_id: l.producto_id ?? null,
     nombre_producto: l.nombre_producto,
     cantidad: l.cantidad,
     precio_unitario: l.precio_unitario,
@@ -74,26 +93,36 @@ async function guardarDetalle(venta_id, lineas) {
   if (error) throw new Error(error.message);
 }
 
+function resumenItems(lineas) {
+  return lineas.map((l) => `${Number(l.cantidad)}× ${l.nombre_producto}`);
+}
+
+async function calcularOrden(req, { cliente_id, items, descuento_porcentaje }) {
+  const porcentaje = validarPorcentaje(descuento_porcentaje);
+  const cliente = await obtenerCliente(cliente_id);
+  const puedeEditarPrecio = req.perfil.rol !== 'cajero';
+  const lineas = await construirItems(items, puedeEditarPrecio);
+  const descuento = descuentoPorPorcentaje(lineas, cliente, porcentaje);
+  return { porcentaje, cliente, totales: calcularTotales(lineas, cliente, descuento) };
+}
+
 ventas.post('/', async (req, res) => {
   try {
-    const { sucursal_id, cliente_id, tipo_orden, items, descuento, nota_interna } = req.body;
+    const { sucursal_id, tipo_orden, items, nota_interna } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'sucursal_id es obligatorio' });
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La orden necesita al menos un producto' });
     }
 
     const puntoEmision = await obtenerPuntoEmisionActivo(sucursal_id);
-    const cliente = await obtenerCliente(cliente_id);
-    const puedeEditarPrecio = req.perfil.rol !== 'cajero';
-    const lineas = await construirItems(items, puedeEditarPrecio);
-    const totales = calcularTotales(lineas, cliente, descuento);
+    const { porcentaje, cliente, totales } = await calcularOrden(req, req.body);
 
     const { data: venta, error } = await db
       .from('ventas')
       .insert({
         sucursal_id,
         punto_emision_id: puntoEmision.id,
-        cliente_id: cliente?.id ?? null,
+        cliente_id: cliente.id,
         cajero_id: req.perfil.id,
         tipo_orden: tipo_orden ?? null,
         nota_interna: nota_interna || null,
@@ -102,6 +131,7 @@ ventas.post('/', async (req, res) => {
         subtotal_exonerado: totales.subtotal_exonerado,
         subtotal_gravado_15: totales.subtotal_gravado_15,
         descuento: totales.descuento,
+        descuento_porcentaje: porcentaje,
         isv_total: totales.isv_total,
         total: totales.total,
       })
@@ -109,7 +139,22 @@ ventas.post('/', async (req, res) => {
       .single();
     if (error) throw new Error(error.message);
 
-    await guardarDetalle(venta.id, totales.lineas);
+    try {
+      await guardarDetalle(venta.id, totales.lineas);
+    } catch (e) {
+      // Sin detalle la orden no sirve: se borra para no dejar una orden
+      // "abierta" vacía y huérfana en la lista de Órdenes Abiertas.
+      await db.from('ventas').delete().eq('id', venta.id);
+      throw e;
+    }
+
+    await registrarAuditoria(req, {
+      accion: 'venta.crear_orden',
+      entidad: 'venta',
+      entidadId: venta.id,
+      sucursalId: sucursal_id,
+      detalle: { numero_orden: venta.numero_orden, total: venta.total, items: resumenItems(totales.lineas) },
+    });
     res.status(201).json({ ...venta, es_borrador: puntoEmision.es_borrador });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -128,25 +173,24 @@ ventas.put('/:id', async (req, res) => {
       return res.status(409).json({ error: 'Sólo se pueden editar órdenes abiertas' });
     }
 
-    const { cliente_id, tipo_orden, items, descuento, nota_interna } = req.body;
+    const { tipo_orden, items, nota_interna } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La orden necesita al menos un producto' });
     }
-    const cliente = await obtenerCliente(cliente_id);
-    const puedeEditarPrecio = req.perfil.rol !== 'cajero';
-    const lineas = await construirItems(items, puedeEditarPrecio);
-    const totales = calcularTotales(lineas, cliente, descuento);
+    const { porcentaje, cliente, totales } = await calcularOrden(req, req.body);
+    const { data: detalleAnterior } = await db.from('detalle_venta').select('cantidad, nombre_producto').eq('venta_id', req.params.id);
 
     const { data: venta, error } = await db
       .from('ventas')
       .update({
-        cliente_id: cliente?.id ?? null,
+        cliente_id: cliente.id,
         tipo_orden: tipo_orden ?? null,
         nota_interna: nota_interna || null,
         subtotal_exento: totales.subtotal_exento,
         subtotal_exonerado: totales.subtotal_exonerado,
         subtotal_gravado_15: totales.subtotal_gravado_15,
         descuento: totales.descuento,
+        descuento_porcentaje: porcentaje,
         isv_total: totales.isv_total,
         total: totales.total,
       })
@@ -156,6 +200,32 @@ ventas.put('/:id', async (req, res) => {
     if (error) throw new Error(error.message);
 
     await guardarDetalle(venta.id, totales.lineas);
+
+    // El autoguardado llama esto seguido; sólo se registra cuando algo
+    // realmente cambió (productos, total, cliente o descuento).
+    const itemsAntes = resumenItems(detalleAnterior ?? []);
+    const itemsDespues = resumenItems(totales.lineas);
+    const cambio =
+      JSON.stringify(itemsAntes) !== JSON.stringify(itemsDespues) ||
+      Number(ventaActual.total) !== Number(venta.total) ||
+      ventaActual.cliente_id !== venta.cliente_id;
+    if (cambio) {
+      await registrarAuditoria(req, {
+        accion: 'venta.editar_orden',
+        entidad: 'venta',
+        entidadId: venta.id,
+        sucursalId: venta.sucursal_id,
+        detalle: {
+          numero_orden: venta.numero_orden,
+          total_anterior: Number(ventaActual.total),
+          total_nuevo: Number(venta.total),
+          descuento_porcentaje: porcentaje,
+          cliente: cliente.nombre,
+          items_antes: itemsAntes,
+          items_despues: itemsDespues,
+        },
+      });
+    }
     res.json(venta);
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -206,6 +276,17 @@ ventas.post('/:id/reenviar-correo', async (req, res) => {
       .from('ventas')
       .update({ correo_enviado: resultado.enviado, correo_error: resultado.motivo ?? null })
       .eq('id', ventaCompleta.id);
+    await registrarAuditoria(req, {
+      accion: 'venta.reenviar_correo',
+      entidad: 'venta',
+      entidadId: ventaCompleta.id,
+      sucursalId: ventaCompleta.sucursal_id,
+      detalle: {
+        numero_factura: ventaCompleta.numero_factura,
+        destinatario: ventaCompleta.clientes.email,
+        enviado: resultado.enviado,
+      },
+    });
     if (!resultado.enviado) return res.status(400).json({ error: resultado.motivo });
     res.json({ ok: true });
   } catch (e) {
@@ -232,81 +313,127 @@ ventas.get('/:id', async (req, res) => {
 });
 
 ventas.delete('/:id', async (req, res) => {
-  const { data: venta } = await db.from('ventas').select('estado').eq('id', req.params.id).single();
+  const venta = await obtenerVentaCompleta(req.params.id);
   if (!venta) return res.status(404).json({ error: 'Orden no encontrada' });
   if (venta.estado !== 'abierta') {
     return res.status(409).json({ error: 'Sólo se pueden descartar órdenes abiertas' });
   }
   await db.from('detalle_venta').delete().eq('venta_id', req.params.id);
   await db.from('ventas').delete().eq('id', req.params.id);
+
+  // Descartar una orden con productos es exactamente lo que se usaría para
+  // ocultar un cobro en efectivo — queda la foto completa de lo que tenía.
+  await registrarAuditoria(req, {
+    accion: 'venta.descartar_orden',
+    entidad: 'venta',
+    entidadId: venta.id,
+    sucursalId: venta.sucursal_id,
+    detalle: {
+      numero_orden: venta.numero_orden,
+      total: Number(venta.total),
+      cliente: venta.clientes?.nombre ?? 'Consumidor Final',
+      items: resumenItems(venta.detalle ?? []),
+    },
+  });
   res.status(204).end();
 });
 
+// Emite la factura de una venta: correlativo del CAI (atómico), pagos,
+// bitácora y correo. Lo usan el POS (/pagar) y la conversión de una
+// cotización de evento en factura.
+export async function facturarVenta(req, ventaId, { pagos, efectivo_recibido, origen = 'pos' }) {
+  if (!Array.isArray(pagos) || pagos.length === 0) {
+    throw Object.assign(new Error('Debe indicar al menos una forma de pago'), { status: 400 });
+  }
+
+  const { data: venta, error: errVenta } = await db
+    .from('ventas')
+    .select('*, clientes(nombre, rtn, email, exento_impuestos)')
+    .eq('id', ventaId)
+    .single();
+  if (errVenta || !venta) throw Object.assign(new Error('Orden no encontrada'), { status: 404 });
+
+  if (Number(venta.total) > UMBRAL_RTN_OBLIGATORIO && !venta.clientes?.rtn) {
+    throw Object.assign(
+      new Error(`Se requiere el RTN del cliente para ventas mayores a L${UMBRAL_RTN_OBLIGATORIO.toLocaleString('es-HN')}`),
+      { status: 400 }
+    );
+  }
+
+  const totalPagado = round2(pagos.reduce((s, p) => s + Number(p.monto), 0));
+  if (totalPagado < Number(venta.total)) {
+    throw Object.assign(new Error(`El pago (${totalPagado}) es menor al total (${venta.total})`), { status: 400 });
+  }
+  const cambio = round2(totalPagado - Number(venta.total));
+
+  const { data: ventaFinal, error: errFinalizar } = await db.rpc('finalizar_venta', {
+    p_venta_id: venta.id,
+    p_efectivo: efectivo_recibido ?? totalPagado,
+    p_cambio: cambio,
+  });
+  if (errFinalizar) throw Object.assign(new Error(errFinalizar.message), { status: 409 });
+
+  const filasPago = pagos.map((p) => ({ venta_id: venta.id, forma_pago_id: p.forma_pago_id, monto: p.monto }));
+  await db.from('venta_pagos').insert(filasPago);
+
+  const { data: puntoEmision } = await db
+    .from('puntos_emision')
+    .select('es_borrador, cai, fecha_limite_emision')
+    .eq('id', venta.punto_emision_id)
+    .single();
+
+  const { data: formas } = await db.from('formas_pago').select('id, nombre');
+  const nombreForma = new Map((formas ?? []).map((f) => [f.id, f.nombre]));
+  await registrarAuditoria(req, {
+    accion: 'venta.facturar',
+    entidad: 'venta',
+    entidadId: venta.id,
+    sucursalId: venta.sucursal_id,
+    detalle: {
+      origen,
+      numero_factura: ventaFinal.numero_factura,
+      numero_orden: venta.numero_orden,
+      total: Number(venta.total),
+      descuento_porcentaje: venta.descuento_porcentaje,
+      cliente: venta.clientes?.nombre ?? 'Consumidor Final',
+      pagos: pagos.map((p) => ({ forma: nombreForma.get(p.forma_pago_id) ?? p.forma_pago_id, monto: Number(p.monto) })),
+      borrador: puntoEmision?.es_borrador ?? true,
+    },
+  });
+
+  // Correo con el PDF adjunto si el cliente tiene correo — no bloquea la
+  // respuesta del cobro. El resultado se guarda en la venta para poder
+  // avisar en el listado de facturas si falló, en vez de fallar en silencio.
+  if (venta.clientes?.email) {
+    obtenerVentaCompleta(venta.id)
+      .then(async (ventaCompleta) => {
+        const pdfBuffer = await generarPdfFacturaBuffer(ventaCompleta);
+        const resultado = await enviarFacturaCliente(ventaCompleta, pdfBuffer);
+        await db
+          .from('ventas')
+          .update({ correo_enviado: resultado.enviado, correo_error: resultado.motivo ?? null })
+          .eq('id', venta.id);
+      })
+      .catch((e) => {
+        db.from('ventas').update({ correo_enviado: false, correo_error: e.message }).eq('id', venta.id).then(
+          () => {},
+          () => {}
+        );
+      });
+  }
+
+  return {
+    ...ventaFinal,
+    cliente_nombre: venta.clientes?.nombre ?? 'Consumidor Final',
+    es_borrador: puntoEmision?.es_borrador ?? true,
+  };
+}
+
 ventas.post('/:id/pagar', async (req, res) => {
   try {
-    const { efectivo_recibido, pagos } = req.body;
-    if (!Array.isArray(pagos) || pagos.length === 0) {
-      return res.status(400).json({ error: 'Debe indicar al menos una forma de pago' });
-    }
-
-    const { data: venta, error: errVenta } = await db
-      .from('ventas')
-      .select('*, clientes(nombre, rtn, email, exento_impuestos)')
-      .eq('id', req.params.id)
-      .single();
-    if (errVenta || !venta) return res.status(404).json({ error: 'Orden no encontrada' });
-
-    if (Number(venta.total) > UMBRAL_RTN_OBLIGATORIO && !venta.clientes?.rtn) {
-      return res.status(400).json({
-        error: `Se requiere el RTN del cliente para ventas mayores a L${UMBRAL_RTN_OBLIGATORIO.toLocaleString('es-HN')}`,
-      });
-    }
-
-    const totalPagado = round2(pagos.reduce((s, p) => s + Number(p.monto), 0));
-    if (totalPagado < venta.total) {
-      return res.status(400).json({ error: `El pago (${totalPagado}) es menor al total (${venta.total})` });
-    }
-    const cambio = round2(totalPagado - venta.total);
-
-    const { data: ventaFinal, error: errFinalizar } = await db.rpc('finalizar_venta', {
-      p_venta_id: venta.id,
-      p_efectivo: efectivo_recibido ?? totalPagado,
-      p_cambio: cambio,
-    });
-    if (errFinalizar) return res.status(409).json({ error: errFinalizar.message });
-
-    const filasPago = pagos.map((p) => ({ venta_id: venta.id, forma_pago_id: p.forma_pago_id, monto: p.monto }));
-    await db.from('venta_pagos').insert(filasPago);
-
-    const { data: puntoEmision } = await db
-      .from('puntos_emision')
-      .select('es_borrador, cai, fecha_limite_emision')
-      .eq('id', venta.punto_emision_id)
-      .single();
-
-    // Correo con el PDF adjunto si el cliente tiene correo — no bloquea la
-    // respuesta del cobro. El resultado se guarda en la venta para poder
-    // avisar en el listado de facturas si falló, en vez de fallar en silencio.
-    if (venta.clientes?.email) {
-      obtenerVentaCompleta(venta.id)
-        .then(async (ventaCompleta) => {
-          const pdfBuffer = await generarPdfFacturaBuffer(ventaCompleta);
-          const resultado = await enviarFacturaCliente(ventaCompleta, pdfBuffer);
-          await db
-            .from('ventas')
-            .update({ correo_enviado: resultado.enviado, correo_error: resultado.motivo ?? null })
-            .eq('id', venta.id);
-        })
-        .catch((e) => {
-          db.from('ventas').update({ correo_enviado: false, correo_error: e.message }).eq('id', venta.id).then(
-            () => {},
-            () => {}
-          );
-        });
-    }
-
-    res.json({ ...ventaFinal, es_borrador: puntoEmision?.es_borrador ?? true });
+    const resultado = await facturarVenta(req, req.params.id, req.body);
+    res.json(resultado);
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(e.status ?? 400).json({ error: e.message });
   }
 });

@@ -1,11 +1,18 @@
-// Ticket de texto plano para impresoras térmicas (Epson TM-T20II 48 col.,
-// Bixolon/Star 40 col.) — mismo ancho que ya usan en las sucursales, para no
-// tener que cambiar el hardware.
+// Ticket para impresoras térmicas. Ancho en caracteres según el papel:
+//   48 col → 80 mm (Epson TM-T20, Xprinter/3nStar de 80 mm, fuente A)
+//   32 col → 58 mm (impresoras térmicas pequeñas/portátiles)
+export const ANCHOS_TICKET = { 48: '80mm', 40: '76mm', 32: '58mm' };
+
+export function anchoValido(columnas) {
+  const n = Number(columnas);
+  return ANCHOS_TICKET[n] ? n : 48;
+}
 
 function centrar(texto, ancho) {
-  const espacio = Math.max(0, ancho - texto.length);
+  const recortado = texto.slice(0, ancho);
+  const espacio = Math.max(0, ancho - recortado.length);
   const izq = Math.floor(espacio / 2);
-  return ' '.repeat(izq) + texto + ' '.repeat(espacio - izq);
+  return ' '.repeat(izq) + recortado + ' '.repeat(espacio - izq);
 }
 
 function linea(caracter, ancho) {
@@ -18,76 +25,121 @@ function filaMontoDerecha(etiqueta, monto, ancho) {
   return etiqueta + ' '.repeat(espacio) + montoTexto;
 }
 
-export function formatearTicket(venta, ancho = 40) {
+// Parte un texto largo en renglones del ancho del papel, sin cortar
+// palabras — salvo las que por sí solas no caben (ej. el CAI, que no tiene
+// espacios y en papel de 58 mm es más ancho que el rollo).
+function ajustar(texto, ancho) {
+  const palabras = String(texto)
+    .split(/\s+/)
+    .flatMap((p) => (p.length > ancho ? p.match(new RegExp(`.{1,${ancho}}`, 'g')) : [p]));
+  const renglones = [];
+  let actual = '';
+  for (const p of palabras) {
+    if ((actual + ' ' + p).trim().length > ancho) {
+      if (actual) renglones.push(actual);
+      actual = p;
+    } else {
+      actual = (actual + ' ' + p).trim();
+    }
+  }
+  if (actual) renglones.push(actual);
+  return renglones;
+}
+
+export function etiquetaDescuento(venta) {
+  const pct = Number(venta.descuento_porcentaje ?? 0);
+  if (pct === 25) return 'Desc. 25% 3ra edad';
+  if (pct > 0) return `Descuento ${pct}%`;
+  return 'Descuento';
+}
+
+export function formatearTicket(venta, ancho = 48) {
   const L = [];
   L.push(centrar('INVERSIONES MILANO S DE R.L.', ancho));
   L.push(centrar('ITALO GELATERIA', ancho));
-  L.push(centrar(venta.sucursales?.nombre ?? '', ancho));
+  for (const r of ajustar(venta.sucursales?.nombre ?? '', ancho)) L.push(centrar(r, ancho));
   L.push(linea('-', ancho));
 
   const puntoEmision = venta.puntos_emision;
   if (puntoEmision?.es_borrador) {
-    L.push(centrar('*** DOCUMENTO SIN VALIDEZ FISCAL ***', ancho));
-    L.push(centrar('(CAI pendiente de confirmar con el SAR)', ancho));
+    L.push(centrar('*** SIN VALIDEZ FISCAL ***', ancho));
+    L.push(centrar('(CAI pendiente)', ancho));
   } else {
-    L.push(`CAI: ${puntoEmision?.cai ?? ''}`);
+    for (const r of ajustar(`CAI: ${puntoEmision?.cai ?? ''}`, ancho)) L.push(r);
   }
   L.push(`Factura: ${venta.numero_factura ?? ''}`);
-  L.push(`Fecha: ${new Date(venta.fecha_emision).toLocaleString('es-HN')}`);
+  L.push(`Fecha: ${new Date(venta.fecha_emision).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`);
   if (puntoEmision?.fecha_limite_emision) {
-    L.push(`Vence: ${puntoEmision.fecha_limite_emision}`);
+    L.push(`Fecha limite emision: ${puntoEmision.fecha_limite_emision}`);
   }
   L.push(linea('-', ancho));
 
-  L.push(`Cliente: ${venta.clientes?.nombre ?? 'Consumidor Final'}`);
+  for (const r of ajustar(`Cliente: ${venta.clientes?.nombre || 'Consumidor Final'}`, ancho)) L.push(r);
   if (venta.clientes?.rtn) L.push(`RTN: ${venta.clientes.rtn}`);
   L.push(`Cajero: ${venta.perfiles?.nombre ?? ''}`);
   L.push(linea('-', ancho));
 
   for (const item of venta.detalle ?? []) {
-    L.push(`${item.cantidad} ${item.nombre_producto}`);
-    L.push(filaMontoDerecha(`  @ L${Number(item.precio_unitario).toFixed(2)}`, item.monto, ancho));
+    for (const r of ajustar(`${Number(item.cantidad)} ${item.nombre_producto}`, ancho)) L.push(r);
+    const bruto = Number(item.cantidad) * Number(item.precio_unitario);
+    L.push(filaMontoDerecha(`  @ L${Number(item.precio_unitario).toFixed(2)}`, bruto, ancho));
   }
   L.push(linea('-', ancho));
 
+  if (Number(venta.descuento) > 0) L.push(filaMontoDerecha(etiquetaDescuento(venta), -Number(venta.descuento), ancho));
   L.push(filaMontoDerecha('Exento', venta.subtotal_exento, ancho));
   L.push(filaMontoDerecha('Exonerado', venta.subtotal_exonerado, ancho));
   L.push(filaMontoDerecha('Gravado 15%', venta.subtotal_gravado_15, ancho));
-  L.push(filaMontoDerecha('ISV', venta.isv_total, ancho));
-  L.push(filaMontoDerecha('Descuento', venta.descuento, ancho));
+  L.push(filaMontoDerecha('ISV 15%', venta.isv_total, ancho));
   L.push(linea('=', ancho));
   L.push(filaMontoDerecha('TOTAL', venta.total, ancho));
   L.push(linea('=', ancho));
 
   if (venta.efectivo_recibido != null) {
-    L.push(filaMontoDerecha('Efectivo', venta.efectivo_recibido, ancho));
+    L.push(filaMontoDerecha('Recibido', venta.efectivo_recibido, ancho));
     L.push(filaMontoDerecha('Cambio', venta.cambio, ancho));
   }
   L.push('');
   L.push(centrar('Gracias por su compra', ancho));
+  L.push('');
 
   return L.join('\n');
 }
 
-function escaparHtml(texto) {
-  return texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+export function formatearTicketPrueba(ancho, sucursal) {
+  const L = [];
+  L.push(centrar('ITALO GELATERIA', ancho));
+  L.push(centrar('PRUEBA DE IMPRESORA', ancho));
+  L.push(linea('-', ancho));
+  if (sucursal) for (const r of ajustar(sucursal, ancho)) L.push(centrar(r, ancho));
+  L.push(`Papel: ${ANCHOS_TICKET[ancho]} (${ancho} columnas)`);
+  L.push(`Fecha: ${new Date().toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`);
+  L.push(linea('-', ancho));
+  L.push('0123456789'.repeat(Math.ceil(ancho / 10)).slice(0, ancho));
+  L.push(filaMontoDerecha('Si esta linea cabe completa', 123.45, ancho));
+  L.push(linea('=', ancho));
+  L.push(centrar('Si ve todo derecho y sin cortes,', ancho));
+  L.push(centrar('la impresora quedo bien configurada.', ancho));
+  L.push('');
+  return L.join('\n');
 }
 
-// Página mínima para abrir el ticket en el navegador y mandarlo a imprimir
-// tal cual a la térmica (Ctrl+P / el botón imprime solo). El ancho en
-// caracteres define el tamaño de fuente para que la línea no se corte en
-// 40 u 48 columnas sin importar el zoom del navegador. `copias` repite el
-// ticket completo N veces en la misma página — un solo Ctrl+P imprime todas
-// las copias seguidas, sin diálogos repetidos. `autoimprimir` dispara
-// window.print() apenas carga, para no depender de que el cajero haga clic.
-export function envolverTicketHtml(textoTicket, ancho, { copias = 1, autoimprimir = false } = {}) {
-  const copiasSeguras = Math.min(3, Math.max(1, Number(copias) || 1));
-  const bloques = Array.from({ length: copiasSeguras }, () => `<pre>${escaparHtml(textoTicket)}</pre>`).join(
-    '<div style="border-top: 1px dashed #999; margin: 6px 0;"></div>'
-  );
+function escaparHtml(texto) {
+  return texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Área realmente imprimible de cada papel (el cabezal no llega al borde):
+// 80 mm → 72 mm, 58 mm → 48 mm.
+const IMPRIMIBLE_MM = { '80mm': 72, '76mm': 68, '58mm': 48 };
+
+// Página del ticket. Siempre UNA copia. @page fija el ancho real del papel
+// térmico para que el navegador no agregue márgenes ni escale la hoja, y el
+// tamaño de letra se calcula para que las N columnas llenen exactamente el
+// área imprimible (Courier: cada carácter mide 0.6 del tamaño de fuente).
+export function envolverTicketHtml(textoTicket, ancho) {
+  const papel = ANCHOS_TICKET[ancho] ?? '80mm';
+  const imprimible = IMPRIMIBLE_MM[papel];
+  const fuenteMm = (imprimible / (ancho * 0.6)).toFixed(2);
 
   return `<!doctype html>
 <html lang="es">
@@ -95,34 +147,23 @@ export function envolverTicketHtml(textoTicket, ancho, { copias = 1, autoimprimi
 <meta charset="utf-8">
 <title>Ticket</title>
 <style>
-  @page { margin: 2mm; }
-  body { margin: 0; background: #fff; }
+  @page { size: ${papel} auto; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
   pre {
-    font-family: 'Courier New', monospace;
-    font-size: ${ancho === 48 ? '11px' : '13px'};
-    line-height: 1.25;
-    white-space: pre-wrap;
-    width: ${ancho}ch;
-    margin: 4px auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: ${fuenteMm}mm;
+    line-height: 1.2;
+    white-space: pre;
+    width: ${imprimible}mm;
+    margin: 0 auto;
+    padding: 2mm 0 8mm;
     color: #000;
-  }
-  .imprimir {
-    display: block;
-    width: ${ancho}ch;
-    margin: 8px auto;
-    font-family: sans-serif;
-    font-size: 13px;
-    padding: 6px;
-  }
-  @media print {
-    .imprimir { display: none; }
+    overflow: hidden;
   }
 </style>
 </head>
 <body>
-<button class="imprimir" onclick="window.print()">Imprimir${copiasSeguras > 1 ? ` (${copiasSeguras} copias)` : ''}</button>
-${bloques}
-${autoimprimir ? '<script>window.onload = () => window.print();</script>' : ''}
+<pre>${escaparHtml(textoTicket)}</pre>
 </body>
 </html>`;
 }

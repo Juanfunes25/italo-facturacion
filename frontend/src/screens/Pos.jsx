@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { calcularTotales } from '../lib/facturacion.js';
+import { calcularTotales, OPCIONES_DESCUENTO } from '../lib/facturacion.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
+import { imprimirTicket, leerConfigImpresora, verPdf } from '../lib/documentos.js';
+import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 const CONSUMIDOR_FINAL_NOMBRE = 'Consumidor Final';
 const UMBRAL_RTN_OBLIGATORIO = 10000;
@@ -14,6 +16,21 @@ function fmtL(n) {
 function rtnLuceValido(rtn) {
   if (!rtn) return true; // no bloquea si está vacío, eso lo maneja el umbral obligatorio
   return /^\d{13,14}$/.test(rtn.replace(/[-\s]/g, ''));
+}
+
+function normalizar(texto) {
+  return String(texto ?? '').trim().toLowerCase();
+}
+
+// Un lector de código de barras "teclea" el código muy rápido y termina con
+// Enter. Se busca primero coincidencia exacta de código de barras o código
+// interno; así el escaneo nunca agrega un producto parecido por error.
+function buscarPorCodigo(productos, codigo) {
+  const c = normalizar(codigo);
+  if (!c) return null;
+  return (
+    productos.find((p) => normalizar(p.codigo_barras) === c) ?? productos.find((p) => normalizar(p.codigo) === c) ?? null
+  );
 }
 
 function SelectorCliente({ session, clienteId, clienteNombre, clienteExento, onSeleccionar }) {
@@ -43,12 +60,23 @@ function SelectorCliente({ session, clienteId, clienteNombre, clienteExento, onS
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: '0.85em', color: 'var(--text-dim)' }}>Cliente</div>
-      <div style={{ fontWeight: 600 }}>
-        {clienteNombre || CONSUMIDOR_FINAL_NOMBRE}
-        {clienteExento && (
-          <span className="chip" style={{ marginLeft: 8, fontSize: '0.7em' }}>
-            Exento de impuestos
-          </span>
+      <div className="pos-cliente-actual">
+        <span style={{ fontWeight: 600 }}>
+          {clienteNombre || CONSUMIDOR_FINAL_NOMBRE}
+          {clienteExento && (
+            <span className="chip" style={{ marginLeft: 8, fontSize: '0.7em' }}>
+              Exento de impuestos
+            </span>
+          )}
+        </span>
+        {clienteId && (
+          <button
+            className="boton-sm boton-secundario"
+            title="Volver a Consumidor Final"
+            onClick={() => onSeleccionar(null)}
+          >
+            ✕ Consumidor Final
+          </button>
         )}
       </div>
       {!creando && (
@@ -64,7 +92,7 @@ function SelectorCliente({ session, clienteId, clienteNombre, clienteExento, onS
               className="boton-sm boton-secundario"
               style={{ width: '100%', marginBottom: 4, cursor: 'pointer' }}
               onClick={() => {
-                onSeleccionar(c);
+                onSeleccionar(c.es_consumidor_final ? null : c);
                 setBusqueda('');
                 setResultados([]);
               }}
@@ -217,22 +245,28 @@ function ModalPago({ total, requiereRtn, onCancelar, onConfirmar, guardando }) {
 
 function ModalOrdenesAbiertas({ ordenes, cargando, onSeleccionar, onCerrar }) {
   return (
-    <div className="overlay">
-      <div className="tarjeta" style={{ maxWidth: 420 }}>
+    <div className="overlay" onClick={onCerrar}>
+      <div className="tarjeta" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
         <h2>Órdenes abiertas</h2>
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.85em', marginTop: -8 }}>
+          Órdenes completas guardadas sin cobrar. Se actualizan solas si otra caja agrega o cobra una.
+        </p>
         {cargando && <p style={{ color: 'var(--text-dim)' }}>Cargando…</p>}
         {!cargando && ordenes.length === 0 && <p style={{ color: 'var(--text-dim)' }}>No hay órdenes abiertas.</p>}
         {ordenes.map((o) => (
-          <div
-            key={o.id}
-            className="boton-secundario boton-sm"
-            style={{ width: '100%', marginBottom: 6, cursor: 'pointer', textAlign: 'left' }}
-            onClick={() => onSeleccionar(o)}
-          >
-            Orden #{o.numero_orden} · {o.clientes?.nombre ?? CONSUMIDOR_FINAL_NOMBRE} · {fmtL(o.total)}
-          </div>
+          <button key={o.id} className="orden-abierta" onClick={() => onSeleccionar(o)}>
+            <span>
+              <strong>Orden #{o.numero_orden}</strong>
+              <br />
+              <span style={{ color: 'var(--text-dim)', fontSize: '0.85em' }}>
+                {o.clientes?.nombre || CONSUMIDOR_FINAL_NOMBRE} · {o.perfiles?.nombre ?? ''} ·{' '}
+                {new Date(o.created_at).toLocaleTimeString('es-HN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </span>
+            <strong>{fmtL(o.total)}</strong>
+          </button>
         ))}
-        <button className="boton-secundario" onClick={onCerrar}>
+        <button className="boton-secundario" style={{ marginTop: 6 }} onClick={onCerrar}>
           Cerrar
         </button>
       </div>
@@ -247,7 +281,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   const [busquedaProducto, setBusquedaProducto] = useState('');
   const [carrito, setCarrito] = useState([]);
   const [cliente, setCliente] = useState(null);
-  const [descuento, setDescuento] = useState('');
+  const [descuentoPct, setDescuentoPct] = useState(0);
   const [notaInterna, setNotaInterna] = useState('');
   const [ventaId, setVentaId] = useState(null);
   const [mostrarPago, setMostrarPago] = useState(false);
@@ -261,16 +295,13 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   const [resultadoFactura, setResultadoFactura] = useState(null);
   const [estadoPuntoEmision, setEstadoPuntoEmision] = useState(null);
   const [enLinea, setEnLinea] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
-  const [copias, setCopias] = useState(1);
   const primerCambio = useRef(true);
   const ultimaVentaRef = useRef(null);
   const buscadorRef = useRef(null);
   // El id de la orden abierta se lee de una ref (no del estado) porque el
   // autoguardado corre en un setTimeout: si se leyera del estado, dos
   // agregados rápidos podían disparar dos autoguardados que todavía no
-  // se habían enterado uno del otro, y cada uno creaba su propia orden
-  // "abierta" en vez de ir sumando a la misma (el bug reportado: una
-  // orden abierta por cada producto en vez de una sola por venta).
+  // se habían enterado uno del otro, y cada uno creaba su propia orden.
   const ventaIdRef = useRef(null);
   const colaGuardadoRef = useRef(Promise.resolve());
   const descartadaRef = useRef(false);
@@ -280,33 +311,50 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     setVentaId(id);
   }
 
-  useEffect(() => {
-    setCargandoCatalogo(true);
-    Promise.all([api.get('/categorias', session), api.get('/productos', session)])
+  function cargarCatalogo({ silencioso = false } = {}) {
+    if (!silencioso) setCargandoCatalogo(true);
+    return Promise.all([api.get('/categorias', session), api.get('/productos', session)])
       .then(([cats, prods]) => {
         setCategorias(cats);
         setProductos(prods);
       })
       .catch((e) => setError(e.message))
       .finally(() => setCargandoCatalogo(false));
+  }
+
+  useEffect(() => {
+    cargarCatalogo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // #31 — el cajero puede empezar a escribir el producto apenas entra.
+  // Un precio o producto nuevo cargado desde otra computadora aparece acá
+  // al instante, sin recargar la página.
+  useCambiosEnVivo(['productos', 'categorias'], () => cargarCatalogo({ silencioso: true }));
+
+  // Órdenes Abiertas se refresca sola mientras está abierta.
+  useCambiosEnVivo(
+    ['ventas'],
+    () => {
+      api
+        .get(`/ventas?estado=abierta&sucursal_id=${sucursalId}`, session)
+        .then(setOrdenesAbiertas)
+        .catch(() => {});
+    },
+    { filtro: sucursalId ? `sucursal_id=eq.${sucursalId}` : undefined, activo: mostrarOrdenes && !!sucursalId }
+  );
+
   useEffect(() => {
     buscadorRef.current?.focus();
   }, []);
 
   // Avisa hacia arriba si hay una orden en curso — el selector de
-  // sucursal vive en la barra de navegación (fuera de este componente) y
-  // se bloquea mientras haya productos, para no mezclar una venta a
-  // medias con el punto de emisión de otra sucursal.
+  // sucursal (en la barra de navegación) se bloquea mientras haya productos.
   useEffect(() => {
     onCarritoOcupado?.(carrito.length > 0);
     return () => onCarritoOcupado?.(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito.length]);
 
-  // #32 — indicador de conexión: el autoguardado depende de la red.
   useEffect(() => {
     const marcarEnLinea = () => setEnLinea(true);
     const marcarSinConexion = () => setEnLinea(false);
@@ -318,7 +366,6 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     };
   }, []);
 
-  // #11/#24/#35 — estado del CAI de la sucursal activa, visible antes de cobrar.
   useEffect(() => {
     if (!sucursalId) return;
     api
@@ -333,18 +380,18 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   }
 
   const productosVisibles = useMemo(() => {
-    let lista = productos.filter((p) => !categoriaActivaId || p.categoria_id === categoriaActivaId);
-    const q = busquedaProducto.trim().toLowerCase();
+    const q = normalizar(busquedaProducto);
     if (q) {
-      lista = productos.filter(
-        (p) => p.nombre.toLowerCase().includes(q) || (p.codigo ?? '').toLowerCase().includes(q)
+      return productos.filter(
+        (p) =>
+          normalizar(p.nombre).includes(q) || normalizar(p.codigo).includes(q) || normalizar(p.codigo_barras).includes(q)
       );
     }
-    return lista;
+    return productos.filter((p) => !categoriaActivaId || p.categoria_id === categoriaActivaId);
   }, [productos, categoriaActivaId, busquedaProducto]);
 
-  // #3/#12 — mismo cálculo de impuestos que el backend, para que el
-  // desglose que ve el cajero coincida exacto con lo que se va a cobrar.
+  // Mismo cálculo de impuestos que el backend, para que el desglose que ve
+  // el cajero coincida exacto con lo que se va a cobrar.
   const totales = useMemo(() => {
     const items = carrito.map((l) => ({
       precio_unitario: l.precio_unitario,
@@ -352,18 +399,19 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       descuento: 0,
       impuesto_tasa: l.impuesto_tasa,
     }));
-    return calcularTotales(items, cliente, descuento);
-  }, [carrito, cliente, descuento]);
+    return calcularTotales(items, cliente, descuentoPct);
+  }, [carrito, cliente, descuentoPct]);
 
   const requiereRtn = totales.total > UMBRAL_RTN_OBLIGATORIO && !cliente?.rtn;
   const carritoTieneLineasInvalidas = carrito.some(
     (l) => !Number.isFinite(l.cantidad) || l.cantidad <= 0 || !Number.isFinite(l.precio_unitario) || l.precio_unitario < 0
   );
   const sinPuntoEmision = estadoPuntoEmision?.error;
+  const cobroBloqueado =
+    carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago;
 
-  // Auto-guarda la orden como "abierta" cada vez que cambia el carrito —
-  // así "Ordenes Abiertas" siempre puede recuperarla, igual que en WizPOS.
-  // #33 — si falla por red, reintenta una vez a los 2s en vez de perder el cambio.
+  // Auto-guarda la orden como "abierta" cada vez que cambia — así "Órdenes
+  // Abiertas" siempre puede recuperarla. Si falla por red, reintenta una vez.
   useEffect(() => {
     if (primerCambio.current) {
       primerCambio.current = false;
@@ -378,18 +426,17 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, cliente, sucursalId, descuento, notaInterna]);
+  }, [carrito, cliente, sucursalId, descuentoPct, notaInterna]);
 
   async function guardarOrden() {
     const body = {
       sucursal_id: sucursalId,
       cliente_id: cliente?.id ?? null,
-      descuento: Number(descuento || 0),
+      descuento_porcentaje: descuentoPct,
       nota_interna: notaInterna || null,
       items: carrito.map((l) => ({
         producto_id: l.producto_id,
         cantidad: l.cantidad,
-        descuento: 0,
       })),
     };
     if (body.items.length === 0) return ventaIdRef.current;
@@ -410,8 +457,6 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   }
 
   // Encola cada autoguardado en serie: nunca deja que dos corran a la vez.
-  // Así el segundo siempre ve el id que dejó el primero (via ventaIdRef) y
-  // actualiza la misma orden en vez de crear una nueva.
   function guardarOrdenEnCola() {
     const promesa = colaGuardadoRef.current.catch(() => {}).then(() => {
       if (descartadaRef.current) return ventaIdRef.current;
@@ -422,7 +467,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   }
 
   function agregarProducto(producto) {
-    if (!producto.precio && producto.precio !== 0) return; // #22
+    if (!producto.precio && producto.precio !== 0) return;
     setResultadoFactura(null);
     setCarrito((actual) => {
       const existente = actual.find((l) => l.producto_id === producto.id);
@@ -440,8 +485,42 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
         },
       ];
     });
-    mostrarToast(`+ ${producto.nombre}`); // #30
+    mostrarToast(`+ ${producto.nombre}`);
   }
+
+  // Lector de código de barras con el cursor fuera de cualquier campo (por
+  // ejemplo, justo después de tocar un producto): se captura la ráfaga de
+  // teclas que manda el lector y se agrega el producto al terminar con Enter.
+  // Si el cursor está en un campo de texto, esa escritura es de una persona
+  // y no se toca.
+  const productosRef = useRef(productos);
+  productosRef.current = productos;
+  useEffect(() => {
+    let buffer = '';
+    let ultimaTecla = 0;
+    function onKeyDown(e) {
+      const el = document.activeElement;
+      const escribiendo = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+      if (escribiendo || e.ctrlKey || e.altKey || e.metaKey) return;
+      const ahora = Date.now();
+      if (ahora - ultimaTecla > 80) buffer = '';
+      ultimaTecla = ahora;
+      if (e.key === 'Enter') {
+        if (buffer.length >= 3) {
+          const producto = buscarPorCodigo(productosRef.current, buffer);
+          if (producto) agregarProducto(producto);
+          else mostrarToast(`Código ${buffer} no encontrado`);
+          e.preventDefault();
+        }
+        buffer = '';
+        return;
+      }
+      if (e.key.length === 1) buffer += e.key;
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function cambiarCantidad(producto_id, delta) {
     setCarrito((actual) =>
@@ -452,7 +531,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   }
 
   function establecerCantidad(producto_id, valor) {
-    const cantidad = Math.max(1, Math.floor(Number(valor) || 1)); // #27
+    const cantidad = Math.max(1, Math.floor(Number(valor) || 1));
     setCarrito((actual) => actual.map((l) => (l.producto_id === producto_id ? { ...l, cantidad } : l)));
   }
 
@@ -462,17 +541,16 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
 
   async function nuevaOrden({ confirmar = true } = {}) {
     if (confirmar && carrito.length > 0) {
-      if (!window.confirm('¿Descartar esta orden? Los productos agregados se van a perder.')) return; // #5
+      if (!window.confirm('¿Descartar esta orden? Los productos agregados se van a perder.')) return;
     }
-    // Marca la orden como descartada ANTES de limpiar, para que si había un
-    // autoguardado en cola (de un producto agregado justo antes de "Nueva")
-    // no la resucite después de borrada.
+    // Marca la orden como descartada ANTES de limpiar, para que un
+    // autoguardado en cola no la resucite después de borrada.
     descartadaRef.current = true;
     const idAEliminar = ventaIdRef.current;
     fijarVentaId(null);
     setCarrito([]);
     setCliente(null);
-    setDescuento('');
+    setDescuentoPct(0);
     setNotaInterna('');
     setResultadoFactura(null);
     setError('');
@@ -498,17 +576,22 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   async function recuperarOrden(orden) {
     try {
       const detalle = await api.get(`/ventas/${orden.id}`, session);
+      if (detalle.estado !== 'abierta') {
+        setError('Esa orden ya fue cobrada o descartada en otra caja.');
+        abrirOrdenesAbiertas();
+        return;
+      }
       descartadaRef.current = false;
       fijarVentaId(detalle.id);
       setCliente(detalle.clientes?.es_consumidor_final ? null : detalle.clientes);
-      setDescuento(detalle.descuento > 0 ? String(detalle.descuento) : '');
+      setDescuentoPct(Number(detalle.descuento_porcentaje ?? 0));
       setCarrito(
         (detalle.detalle || []).map((d) => ({
           producto_id: d.producto_id,
           nombre: d.nombre_producto,
-          precio_unitario: d.precio_unitario,
-          impuesto_tasa: d.impuesto_tasa,
-          cantidad: d.cantidad,
+          precio_unitario: Number(d.precio_unitario),
+          impuesto_tasa: Number(d.impuesto_tasa),
+          cantidad: Number(d.cantidad),
         }))
       );
       onCambiarSucursalId?.(detalle.sucursal_id);
@@ -526,27 +609,31 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     mostrarToast('Pedido repetido — revisa y cobra');
   }
 
-  // Un solo botón, un solo toque: Efectivo y Tarjeta cobran de inmediato el
-  // total exacto, sin abrir el modal ni tener que elegir la forma de pago
-  // de una lista. "Más formas de pago" (dividir el pago, o efectivo con
-  // cambio) queda como opción secundaria para el caso raro.
+  // Un solo toque: Efectivo y Tarjeta cobran de inmediato el total exacto.
+  // "Más formas de pago" (dividir, transferencia, efectivo con cambio)
+  // queda como opción secundaria.
   function pagoInstantaneo(forma) {
-    if (guardandoPago || carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || totales.total < 0) return;
+    if (cobroBloqueado) return;
     confirmarPago({
       pagos: [{ forma, monto: totales.total.toFixed(2) }],
       efectivo: forma === 'efectivo' ? totales.total : 0,
     });
   }
 
+  async function imprimir(id, opciones) {
+    try {
+      await imprimirTicket(id, session, opciones);
+    } catch (e) {
+      setError(`La factura se emitió, pero no se pudo imprimir: ${e.message}`);
+    }
+  }
+
   async function confirmarPago({ pagos, efectivo }) {
     setGuardandoPago(true);
     setError('');
     try {
-      // Siempre se espera la cola de autoguardado antes de cobrar — si no,
-      // un producto agregado hace menos de 700ms podía cobrarse bien en
-      // pantalla pero facturarse con el total viejo que todavía tenía el
-      // servidor (el POS ya lo mostraba correcto, pero la factura real
-      // podía quedar por debajo de lo que se cobró).
+      // Siempre se espera la cola de autoguardado antes de cobrar, para que
+      // el total facturado sea el mismo que ve el cajero.
       const idParaPagar = await guardarOrdenEnCola();
       if (!idParaPagar) throw new Error('No se pudo guardar la orden antes de cobrar');
       const mapaFormas = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
@@ -559,17 +646,16 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
         efectivo_recibido: efectivo,
         pagos: pagosConId,
       });
-      ultimaVentaRef.current = { cliente, carrito }; // #23
+      ultimaVentaRef.current = { cliente, carrito };
       setResultadoFactura(venta);
       setMostrarPago(false);
       setCarrito([]);
       setCliente(null);
-      setDescuento('');
+      setDescuentoPct(0);
       setNotaInterna('');
       fijarVentaId(null);
 
-      // #15 — abre el ticket listo para imprimir apenas se cobra.
-      window.open(`/api/ventas/${venta.id}/ticket?autoimprimir=1&copias=${copias}`, '_blank');
+      if (leerConfigImpresora().autoImprimir) imprimir(venta.id);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -593,32 +679,33 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
             <p>
               Número: <strong>{resultadoFactura.numero_factura}</strong>
             </p>
+            <p style={{ marginTop: -6 }}>Cliente: {resultadoFactura.cliente_nombre || CONSUMIDOR_FINAL_NOMBRE}</p>
             <p>Cambio: {fmtL(resultadoFactura.cambio ?? 0)}</p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <a
+              <button className="boton-secundario boton-sm" style={{ flex: 1 }} onClick={() => imprimir(resultadoFactura.id, { reimpresion: true })}>
+                🖨 Reimprimir ticket
+              </button>
+              <button
                 className="boton-secundario boton-sm"
-                style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
-                href={`/api/ventas/${resultadoFactura.id}/ticket`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Ver ticket
-              </a>
-              <a
-                className="boton-secundario boton-sm"
-                style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
-                href={`/api/ventas/${resultadoFactura.id}/pdf`}
-                target="_blank"
-                rel="noreferrer"
+                style={{ flex: 1 }}
+                onClick={() => verPdf(`/ventas/${resultadoFactura.id}/pdf`, session).catch((e) => setError(e.message))}
               >
                 Ver PDF
-              </a>
+              </button>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button className="boton-secundario" onClick={repetirUltimaVenta}>
                 Repetir pedido
               </button>
-              <button onClick={() => setResultadoFactura(null)}>Nueva orden</button>
+              <button
+                autoFocus
+                onClick={() => {
+                  setResultadoFactura(null);
+                  buscadorRef.current?.focus();
+                }}
+              >
+                Nueva orden
+              </button>
             </div>
           </div>
         </div>
@@ -665,15 +752,17 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       <div className="pos-panel">
         <input
           ref={buscadorRef}
-          placeholder="Buscar producto por nombre o código… (Enter agrega el primero)"
+          placeholder="Buscar por nombre, código o código de barras… (Enter agrega)"
           value={busquedaProducto}
           onKeyDown={(e) => {
-            // Enter agrega el primer producto visible — evita soltar el
-            // teclado para agarrar el mouse cuando el cajero ya escribió
-            // el código o nombre exacto.
-            if (e.key === 'Enter' && productosVisibles.length > 0) {
-              agregarProducto(productosVisibles[0]);
+            if (e.key !== 'Enter') return;
+            const exacto = buscarPorCodigo(productos, busquedaProducto);
+            const producto = exacto ?? productosVisibles[0];
+            if (producto) {
+              agregarProducto(producto);
               setBusquedaProducto('');
+            } else if (busquedaProducto.trim()) {
+              mostrarToast(`"${busquedaProducto.trim()}" no encontrado`);
             }
           }}
           onChange={(e) => setBusquedaProducto(e.target.value)}
@@ -681,7 +770,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
         {cargandoCatalogo && <p style={{ color: 'var(--text-dim)' }}>Cargando catálogo…</p>}
         {!cargandoCatalogo && (
           <p style={{ color: 'var(--text-dim)', fontSize: '0.85em', marginTop: -6 }}>
-            {productosVisibles.length} producto{productosVisibles.length === 1 ? '' : 's'}
+            {productosVisibles.length} producto{productosVisibles.length === 1 ? '' : 's'} · el lector de código de barras funciona en cualquier momento
           </p>
         )}
         <div className="pos-productos">
@@ -698,11 +787,6 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       </div>
 
       <div className="pos-panel">
-        {/* El cambio de sucursal vive en la barra de navegación (arriba de
-            toda la app, siempre visible) — acá sólo se muestra en qué
-            sucursal se está facturando, como recordatorio dentro del
-            flujo de cobro. Sacarlo de acá evita que se toque por error
-            en medio de una venta. */}
         {sucursalActual && (
           <div className="pos-sucursal-banner" style={{ background: colorSucursal(sucursalId) }}>
             {sucursalActual.nombre}
@@ -727,7 +811,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           onSeleccionar={setCliente}
         />
 
-        <div style={{ maxHeight: '30vh', overflowY: 'auto' }}>
+        <div style={{ maxHeight: '26vh', overflowY: 'auto' }}>
           {carrito.length === 0 && <p style={{ color: 'var(--text-dim)' }}>Sin productos todavía.</p>}
           {carrito.map((l) => (
             <div key={l.producto_id} className="pos-orden-linea">
@@ -759,29 +843,21 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           ))}
         </div>
 
-        <div className="toolbar" style={{ marginTop: 8 }}>
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Descuento (L)"
-            value={descuento}
-            onChange={(e) => setDescuento(e.target.value)}
-            style={{ marginBottom: 0, flex: 1, borderColor: totales.total < 0 ? '#ff8080' : undefined }}
-          />
-          <select
-            value={copias}
-            onChange={(e) => setCopias(Number(e.target.value))}
-            title="Copias del ticket"
-            style={{ marginBottom: 0, width: 90 }}
-          >
-            <option value={1}>1 copia</option>
-            <option value={2}>2 copias</option>
-          </select>
+        <div className="pos-descuentos" role="radiogroup" aria-label="Descuento">
+          {OPCIONES_DESCUENTO.map((o) => (
+            <button
+              key={o.porcentaje}
+              role="radio"
+              aria-checked={descuentoPct === o.porcentaje}
+              className={`pos-descuento ${descuentoPct === o.porcentaje ? 'activo' : ''}`}
+              onClick={() => setDescuentoPct(o.porcentaje)}
+            >
+              {o.etiqueta}
+            </button>
+          ))}
         </div>
-        {totales.total < 0 && (
-          <p style={{ color: '#ff8080', fontSize: '0.82em', marginTop: -6 }}>
-            El descuento es mayor al subtotal — el total no puede quedar negativo. Ajusta el descuento.
-          </p>
+        {descuentoPct === 25 && (
+          <p className="pos-nota-descuento">Verifica el carné de adulto mayor antes de cobrar.</p>
         )}
         <input
           placeholder="Nota interna (no sale en la factura)"
@@ -791,18 +867,18 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
 
         <div className="pos-totales-fila">
           <span>Sub-Total</span>
-          <span>{fmtL(totales.subtotal_exento + totales.subtotal_exonerado + totales.subtotal_gravado_15)}</span>
-        </div>
-        <div className="pos-totales-fila">
-          <span>Impuesto</span>
-          <span>{fmtL(totales.isv_total)}</span>
+          <span>{fmtL(totales.subtotal_bruto)}</span>
         </div>
         {totales.descuento > 0 && (
           <div className="pos-totales-fila">
-            <span>Descuento</span>
+            <span>Descuento {descuentoPct}%{descuentoPct === 25 ? ' (3ra edad)' : ''}</span>
             <span>-{fmtL(totales.descuento)}</span>
           </div>
         )}
+        <div className="pos-totales-fila">
+          <span>ISV incluido</span>
+          <span>{fmtL(totales.isv_total)}</span>
+        </div>
         <div className="pos-totales-fila total">
           <span>Total</span>
           <span>{fmtL(totales.total)}</span>
@@ -827,23 +903,16 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           )}
         </div>
 
-        {/* Un solo toque cobra de inmediato — nada de abrir un menú y
-            después elegir. Efectivo y Tarjeta bien separados para que no
-            se confundan a la hora de cobrar. */}
+        {/* Efectivo y Tarjeta en extremos opuestos con una separación ancha
+            en medio: un toque mal apuntado cae en el espacio vacío, nunca en
+            el botón de al lado. */}
         <div className="pos-botones-cobro">
-          <button
-            className="boton-cobro efectivo"
-            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
-            onClick={() => pagoInstantaneo('efectivo')}
-          >
+          <button className="boton-cobro efectivo" disabled={cobroBloqueado} onClick={() => pagoInstantaneo('efectivo')}>
             <span className="boton-cobro-icono">💵</span>
             EFECTIVO
           </button>
-          <button
-            className="boton-cobro tarjeta"
-            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
-            onClick={() => pagoInstantaneo('tarjeta')}
-          >
+          <span className="pos-cobro-separador" aria-hidden="true" />
+          <button className="boton-cobro tarjeta" disabled={cobroBloqueado} onClick={() => pagoInstantaneo('tarjeta')}>
             <span className="boton-cobro-icono">💳</span>
             TARJETA
           </button>
@@ -851,7 +920,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
         {guardandoPago && <p className="pos-procesando">Procesando…</p>}
         <button
           className="boton-secundario boton-sm"
-          style={{ marginTop: 8 }}
+          style={{ marginTop: 10, width: '100%' }}
           disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision}
           onClick={() => setMostrarPago(true)}
         >

@@ -14,9 +14,21 @@ import CajaChica from './screens/CajaChica.jsx';
 import Sucursales from './screens/Sucursales.jsx';
 import Dashboard from './screens/Dashboard.jsx';
 import Cotizaciones from './screens/Cotizaciones.jsx';
+import Impresora from './screens/Impresora.jsx';
+import Bitacora from './screens/Bitacora.jsx';
+import { useConexionEnVivo } from './lib/tiempoReal.js';
+
+// Mismo dominio interno que usa el backend (routes/usuarios.js) para los
+// usuarios que entran con nombre de usuario en vez de correo.
+const DOMINIO_USUARIOS = 'italo.local';
+
+function accesoAEmail(acceso) {
+  const texto = acceso.trim().toLowerCase();
+  return texto.includes('@') ? texto : `${texto}@${DOMINIO_USUARIOS}`;
+}
 
 function PantallaLogin({ onEntrar }) {
-  const [email, setEmail] = useState('');
+  const [acceso, setAcceso] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -25,9 +37,13 @@ function PantallaLogin({ onEntrar }) {
     e.preventDefault();
     setError('');
     setCargando(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: accesoAEmail(acceso), password });
     setCargando(false);
-    if (error) return setError(error.message);
+    if (error) {
+      return setError(
+        /invalid login credentials/i.test(error.message) ? 'Usuario o contraseña incorrectos' : error.message
+      );
+    }
     onEntrar(data.session);
   }
 
@@ -36,7 +52,14 @@ function PantallaLogin({ onEntrar }) {
       <form className="tarjeta" onSubmit={entrar}>
         <h1>Italo Facturación</h1>
         {error && <div className="error">{error}</div>}
-        <input type="email" placeholder="Correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input
+          placeholder="Usuario o correo"
+          autoComplete="username"
+          autoCapitalize="none"
+          value={acceso}
+          onChange={(e) => setAcceso(e.target.value)}
+          required
+        />
         <input
           type="password"
           placeholder="Contraseña"
@@ -65,7 +88,26 @@ const PANTALLAS = [
   { id: 'puntos-emision', etiqueta: 'CAI / Puntos de emisión', roles: ['admin', 'manager'], Componente: PuntosEmision },
   { id: 'usuarios', etiqueta: 'Usuarios', roles: ['admin'], Componente: Usuarios },
   { id: 'sucursales', etiqueta: 'Sucursales', roles: ['admin'], Componente: Sucursales },
+  { id: 'bitacora', etiqueta: 'Bitácora', roles: ['admin'], Componente: Bitacora },
+  { id: 'impresora', etiqueta: 'Impresora', roles: ['admin', 'manager', 'cajero'], Componente: Impresora },
 ];
+
+function IndicadorVivo() {
+  const conectado = useConexionEnVivo();
+  return (
+    <span
+      className={`nav-vivo ${conectado ? 'conectado' : ''}`}
+      title={
+        conectado
+          ? 'Sincronizado en tiempo real: las ventas y precios de todas las sucursales se actualizan al instante'
+          : 'Reconectando la sincronización en tiempo real…'
+      }
+    >
+      <span className="nav-vivo-punto" />
+      {conectado ? 'En vivo' : 'Conectando…'}
+    </span>
+  );
+}
 
 function PantallaApp({ session, onSalir }) {
   const [perfil, setPerfil] = useState(null);
@@ -180,6 +222,7 @@ function PantallaApp({ session, onSalir }) {
             {p.etiqueta}
           </button>
         ))}
+        <IndicadorVivo />
         <button className="salir" onClick={onSalir}>
           {perfil.nombre} · Salir
         </button>

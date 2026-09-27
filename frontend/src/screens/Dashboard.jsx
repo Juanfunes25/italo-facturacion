@@ -4,6 +4,7 @@ import { BarraHorizontal, BarrasVerticales, Leyenda } from '../components/Grafic
 import { colorSucursal } from '../lib/coloresSucursal.js';
 import { ATAJOS_FECHA } from '../lib/rangosFecha.js';
 import { descargarCsv } from '../lib/csv.js';
+import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 const COLOR_FORMA_PAGO = { Efectivo: 'var(--serie-1)', Tarjeta: 'var(--serie-2)', Transferencia: 'var(--serie-3)' };
 
@@ -41,6 +42,26 @@ export default function Dashboard({ session, sucursales }) {
     consultar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cada factura emitida o anulada en cualquier sucursal mueve los números
+  // al instante. Sin mostrar "Consultando…" para que no parpadee.
+  useCambiosEnVivo(
+    ['ventas'],
+    async (payload) => {
+      const estado = payload.new?.estado ?? payload.old?.estado;
+      if (estado && estado !== 'pagada') return;
+      try {
+        const params = new URLSearchParams();
+        if (filtros.sucursal_id) params.set('sucursal_id', filtros.sucursal_id);
+        if (filtros.fechaInicio) params.set('fechaInicio', filtros.fechaInicio);
+        if (filtros.fechaFin) params.set('fechaFin', filtros.fechaFin);
+        setDatos(await api.get(`/dashboard?${params.toString()}`, session));
+      } catch {
+        // se reintenta con el siguiente cambio
+      }
+    },
+    { retrasoMs: 800 }
+  );
 
   return (
     <div>

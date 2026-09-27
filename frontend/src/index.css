@@ -263,6 +263,52 @@ button:disabled {
   width: auto;
 }
 
+/* ── Indicador "En vivo" (sincronización en tiempo real) ─────────────── */
+
+.nav-vivo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  margin-left: auto;
+  padding: 0 10px;
+}
+
+.nav-vivo-punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7385;
+}
+
+.nav-vivo.conectado .nav-vivo-punto {
+  background: #3ecf8e;
+  box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.6);
+  animation: latido 2s infinite;
+}
+
+.nav-vivo.conectado {
+  color: #8fe3bd;
+}
+
+.nav .nav-vivo + .salir {
+  margin-left: 0;
+}
+
+@keyframes latido {
+  0% {
+    box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(62, 207, 142, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(62, 207, 142, 0);
+  }
+}
+
 /* ── Indicador de sucursal en la barra de navegación ─────────────────── */
 
 .nav-sucursal {
@@ -605,13 +651,226 @@ table.tabla tbody tr:hover {
   margin-top: 10px;
 }
 
+/* ── Conversión cotización → factura ─────────────────────────────────── */
+
+.resumen-conversion {
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: var(--radio-chico);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.resumen-conversion div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 0.9em;
+}
+
+.resumen-conversion div span {
+  color: var(--text-dim);
+}
+
+.resumen-conversion div.total {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 8px;
+  font-size: 1.05em;
+}
+
+.sucursal-emisora {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.9em;
+  color: var(--text-dim);
+}
+
+.sucursal-emisora strong {
+  color: var(--text);
+}
+
+.aviso-ok {
+  background: rgba(62, 207, 142, 0.12);
+  border: 1px solid rgba(62, 207, 142, 0.45);
+  color: #8fe3bd;
+  border-radius: var(--radio-chico);
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  animation: aparecer 0.15s ease;
+}
+
+/* ── Bitácora, impresora y controles segmentados ─────────────────────── */
+
+.sello-integridad {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.sello-integridad.ok {
+  border-color: rgba(62, 207, 142, 0.5);
+  background: rgba(62, 207, 142, 0.1);
+  color: #8fe3bd;
+}
+
+.sello-integridad.alterada {
+  border-color: #ff8080;
+  background: rgba(138, 44, 44, 0.25);
+  color: #ffb3b3;
+}
+
+table.tabla tbody tr.fila-sensible td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.opciones-segmentadas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.opciones-segmentadas button {
+  width: auto;
+  flex: 1 1 110px;
+  background: var(--navy);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  box-shadow: none;
+}
+
+.opciones-segmentadas button.activo {
+  border-color: var(--color-sucursal);
+  color: var(--text);
+  background: color-mix(in srgb, var(--color-sucursal) 16%, var(--navy));
+}
+
+.interruptor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.interruptor input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--color-sucursal);
+}
+
+.pasos {
+  padding-left: 20px;
+  line-height: 1.55;
+}
+
+.pasos li {
+  margin-bottom: 12px;
+}
+
+.codigo-copiable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: var(--radio-chico);
+}
+
+.codigo-copiable code {
+  flex: 1;
+  font-size: 0.82em;
+  color: var(--gold);
+  word-break: break-all;
+}
+
 /* ── Botones de cobro directo (Efectivo/Tarjeta) ─────────────────────── */
 
+/* Separación ancha y una línea divisoria en medio: un dedo que se desvía
+   cae en el espacio vacío, nunca en el botón de al lado. */
 .pos-botones-cobro {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 10px;
+  grid-template-columns: 1fr 44px 1fr;
+  align-items: stretch;
+  margin-top: 12px;
+}
+
+.pos-cobro-separador {
+  justify-self: center;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, var(--border) 20%, var(--border) 80%, transparent);
+}
+
+.pos-cliente-actual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 8px;
+}
+
+.pos-descuentos {
+  display: grid;
+  grid-template-columns: 1fr 0.7fr 1.3fr;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.pos-descuento {
+  padding: 8px 6px;
+  font-size: 0.82em;
+  background: var(--navy);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  box-shadow: none;
+}
+
+.pos-descuento:hover:not(:disabled):not(.activo) {
+  filter: none;
+  border-color: var(--gold);
+  color: var(--text);
+}
+
+.pos-descuento.activo {
+  background: rgba(212, 175, 55, 0.14);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.pos-nota-descuento {
+  color: var(--gold);
+  font-size: 0.8em;
+  margin: -2px 0 8px;
+}
+
+.orden-abierta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  margin-bottom: 6px;
+  background: var(--navy);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.orden-abierta:hover:not(:disabled) {
+  border-color: var(--color-sucursal);
+  filter: none;
 }
 
 .boton-cobro {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 import { descargarCsv } from '../lib/csv.js';
+import { descargarPdf, imprimirTicket, verPdf } from '../lib/documentos.js';
+import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 export default function Facturas({ session, perfil, sucursales, filtroInicial, onFiltroInicialUsado }) {
   const [filtros, setFiltros] = useState({ sucursal_id: '', fechaInicio: '', fechaFin: '', q: filtroInicial?.q ?? '' });
@@ -62,6 +64,18 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
     if (filtroInicial) onFiltroInicialUsado?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Una factura emitida o anulada en cualquier sucursal aparece acá al
+  // instante, con los mismos filtros que ya están puestos.
+  useCambiosEnVivo(['ventas'], (payload) => {
+    const estado = payload.new?.estado ?? payload.old?.estado;
+    if (estado && estado !== 'pagada') return;
+    buscar().catch(() => {});
+  });
+
+  function accionDocumento(promesa) {
+    promesa.catch((e) => setError(e.message));
+  }
 
   async function reenviarCorreo(id) {
     setReenviando(true);
@@ -212,40 +226,56 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
             )}
             <h2>{seleccionada.numero_factura}</h2>
             <p>
-              {seleccionada.clientes?.nombre ?? 'Consumidor Final'}
+              {seleccionada.clientes?.nombre || 'Consumidor Final'}
               {seleccionada.clientes?.rtn ? ` · RTN ${seleccionada.clientes.rtn}` : ''}
             </p>
             {(seleccionada.detalle || []).map((d) => (
               <div key={d.id} className="pos-orden-linea">
                 <span>
-                  {d.cantidad} × {d.nombre_producto}
+                  {Number(d.cantidad)} × {d.nombre_producto}
                 </span>
-                <span>L {Number(d.monto).toFixed(2)}</span>
+                <span>L {(Number(d.cantidad) * Number(d.precio_unitario)).toFixed(2)}</span>
               </div>
             ))}
+            {Number(seleccionada.descuento) > 0 && (
+              <div className="pos-totales-fila">
+                <span>
+                  Descuento{seleccionada.descuento_porcentaje ? ` ${seleccionada.descuento_porcentaje}%` : ''}
+                  {Number(seleccionada.descuento_porcentaje) === 25 ? ' (3ra edad)' : ''}
+                </span>
+                <span>-L {Number(seleccionada.descuento).toFixed(2)}</span>
+              </div>
+            )}
             <div className="pos-totales-fila total">
               <span>Total</span>
               <span>L {Number(seleccionada.total).toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
-              <a
+              <button
                 className="boton-secundario boton-sm"
-                style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
-                href={`/api/ventas/${seleccionada.id}/ticket`}
-                target="_blank"
-                rel="noreferrer"
+                style={{ flex: 1 }}
+                onClick={() => accionDocumento(imprimirTicket(seleccionada.id, session, { reimpresion: true }))}
               >
-                Ticket
-              </a>
-              <a
+                🖨 Reimprimir
+              </button>
+              <button
                 className="boton-secundario boton-sm"
-                style={{ textAlign: 'center', textDecoration: 'none', flex: 1 }}
-                href={`/api/ventas/${seleccionada.id}/pdf`}
-                target="_blank"
-                rel="noreferrer"
+                style={{ flex: 1 }}
+                onClick={() => accionDocumento(verPdf(`/ventas/${seleccionada.id}/pdf`, session))}
               >
-                PDF
-              </a>
+                Ver PDF
+              </button>
+              <button
+                className="boton-secundario boton-sm"
+                style={{ flex: 1 }}
+                onClick={() =>
+                  accionDocumento(
+                    descargarPdf(`/ventas/${seleccionada.id}/pdf`, session, `factura-${seleccionada.numero_factura}.pdf`)
+                  )
+                }
+              >
+                Descargar PDF
+              </button>
             </div>
             {seleccionada.clientes?.email && (
               <button

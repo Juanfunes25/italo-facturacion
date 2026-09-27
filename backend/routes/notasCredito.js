@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const notasCredito = Router();
 
@@ -32,9 +33,24 @@ notasCredito.post('/', requireRole('admin'), async (req, res) => {
     .single();
   if (error) return res.status(500).json({ error: error.message });
 
-  if (Number(monto) >= restante - 0.01) {
+  const anulaTotal = Number(monto) >= restante - 0.01;
+  if (anulaTotal) {
     await db.from('ventas').update({ anulada: true }).eq('id', venta_id);
   }
+
+  await registrarAuditoria(req, {
+    accion: anulaTotal ? 'venta.anular' : 'venta.nota_credito_parcial',
+    entidad: 'venta',
+    entidadId: venta_id,
+    sucursalId: venta.sucursal_id,
+    detalle: {
+      numero_factura: venta.numero_factura,
+      total_factura: Number(venta.total),
+      monto_acreditado: Number(monto),
+      motivo,
+      nota_credito_id: nota.id,
+    },
+  });
 
   res.status(201).json(nota);
 });

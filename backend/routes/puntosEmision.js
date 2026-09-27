@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { registrarAuditoria } from '../lib/auditoria.js';
 
 export const puntosEmision = Router();
 
@@ -63,6 +64,7 @@ puntosEmision.get('/sucursal/:sucursal_id/estado', async (req, res) => {
 puntosEmision.put('/:id', requireRole('admin'), async (req, res) => {
   const { cai, correlativo_desde, correlativo_hasta, correlativo_actual, fecha_limite_emision, es_borrador } =
     req.body;
+  const { data: anterior } = await db.from('puntos_emision').select('*').eq('id', req.params.id).maybeSingle();
   const { data, error } = await db
     .from('puntos_emision')
     .update({ cai, correlativo_desde, correlativo_hasta, correlativo_actual, fecha_limite_emision, es_borrador })
@@ -70,5 +72,23 @@ puntosEmision.put('/:id', requireRole('admin'), async (req, res) => {
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
+
+  // Mover el correlativo o el CAI a mano es lo más delicado fiscalmente —
+  // queda registrado quién lo hizo y qué valores había antes.
+  if (anterior) {
+    const cambios = {};
+    for (const campo of ['cai', 'correlativo_desde', 'correlativo_hasta', 'correlativo_actual', 'fecha_limite_emision', 'es_borrador']) {
+      if (String(anterior[campo]) !== String(data[campo])) cambios[campo] = { antes: anterior[campo], despues: data[campo] };
+    }
+    if (Object.keys(cambios).length > 0) {
+      await registrarAuditoria(req, {
+        accion: 'cai.editar',
+        entidad: 'punto_emision',
+        entidadId: data.id,
+        sucursalId: data.sucursal_id,
+        detalle: { cambios },
+      });
+    }
+  }
   res.json(calcularEstado(data));
 });

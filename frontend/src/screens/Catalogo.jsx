@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 const fmtL = (n) => `L ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const FORM_VACIO = { codigo: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' };
+const FORM_VACIO = { codigo: '', codigo_barras: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' };
 
 export default function Catalogo({ session }) {
   const [categorias, setCategorias] = useState([]);
@@ -21,7 +22,11 @@ export default function Catalogo({ session }) {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return productos.filter((p) => {
-      const coincideTexto = !q || p.nombre.toLowerCase().includes(q) || (p.codigo ?? '').toLowerCase().includes(q);
+      const coincideTexto =
+        !q ||
+        p.nombre.toLowerCase().includes(q) ||
+        (p.codigo ?? '').toLowerCase().includes(q) ||
+        (p.codigo_barras ?? '').toLowerCase().includes(q);
       const coincideCategoria = !categoriaFiltro || p.categoria_id === categoriaFiltro;
       return coincideTexto && coincideCategoria;
     });
@@ -35,6 +40,8 @@ export default function Catalogo({ session }) {
   useEffect(() => {
     cargar().catch((e) => setError(e.message));
   }, []);
+
+  useCambiosEnVivo(['productos', 'categorias'], () => cargar().catch(() => {}));
 
   async function crearCategoria() {
     if (!nuevaCategoria.trim()) return;
@@ -79,6 +86,7 @@ export default function Catalogo({ session }) {
     setEditandoId(producto.id);
     setForm({
       codigo: producto.codigo ?? '',
+      codigo_barras: producto.codigo_barras ?? '',
       nombre: producto.nombre,
       categoria_id: producto.categoria_id ?? '',
       precio: producto.precio,
@@ -93,6 +101,7 @@ export default function Catalogo({ session }) {
     setEditandoId(null);
     setForm({
       codigo: '',
+      codigo_barras: '',
       nombre: `${producto.nombre} (copia)`,
       categoria_id: producto.categoria_id ?? '',
       precio: producto.precio,
@@ -105,6 +114,7 @@ export default function Catalogo({ session }) {
     setGuardando(true);
     const body = {
       codigo: form.codigo || null,
+      codigo_barras: form.codigo_barras.trim() || null,
       nombre: form.nombre,
       categoria_id: form.categoria_id || null,
       precio: Number(form.precio),
@@ -190,6 +200,15 @@ export default function Catalogo({ session }) {
         <div className="toolbar">
           <input placeholder="Código" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
           <input
+            placeholder="Código de barras (escanéalo aquí)"
+            value={form.codigo_barras}
+            onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })}
+            onKeyDown={(e) => {
+              // El lector termina con Enter: que no dispare nada más.
+              if (e.key === 'Enter') e.preventDefault();
+            }}
+          />
+          <input
             placeholder="Nombre"
             value={form.nombre}
             onChange={(e) => setForm({ ...form, nombre: e.target.value })}
@@ -252,6 +271,7 @@ export default function Catalogo({ session }) {
           <thead>
             <tr>
               <th>Código</th>
+              <th>Cód. barras</th>
               <th>Nombre</th>
               <th>Categoría</th>
               <th>Precio</th>
@@ -264,6 +284,7 @@ export default function Catalogo({ session }) {
             {productosVisibles.map((p) => (
               <tr key={p.id}>
                 <td>{p.codigo}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.9em', color: 'var(--text-dim)' }}>{p.codigo_barras ?? '—'}</td>
                 <td>{p.nombre}</td>
                 <td>{p.categorias?.nombre ?? '—'}</td>
                 <td>{fmtL(p.precio)}</td>

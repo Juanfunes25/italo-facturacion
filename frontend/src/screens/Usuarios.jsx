@@ -2,10 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 
-const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Cajeros que no usan correo entran con un nombre de usuario (ej.
+// "maria.lopez"). Si se escribe un correo, se usa tal cual.
+const USUARIO_VALIDO = /^[a-z0-9._-]{3,30}$/;
+
+function problemaAcceso(acceso) {
+  const texto = acceso.trim().toLowerCase();
+  if (!texto) return null;
+  if (texto.includes('@')) return null;
+  if (/\s/.test(texto)) return 'Sin espacios — usa punto o guion, ej. maria.lopez';
+  if (!USUARIO_VALIDO.test(texto)) return 'De 3 a 30 caracteres: letras, números, punto, guion';
+  return null;
+}
 
 const VACIO = {
-  email: '',
+  acceso: '',
   password: '',
   nombre: '',
   rol: 'cajero',
@@ -25,7 +36,7 @@ export default function Usuarios({ session, sucursales }) {
   const usuariosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return usuarios.filter((u) => {
-      const coincideTexto = !q || u.nombre.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
+      const coincideTexto = !q || u.nombre.toLowerCase().includes(q) || (u.acceso ?? '').toLowerCase().includes(q);
       const coincideRol = !rolFiltro || u.rol === rolFiltro;
       return coincideTexto && coincideRol;
     });
@@ -43,7 +54,11 @@ export default function Usuarios({ session, sucursales }) {
     setError('');
     setCreando(true);
     try {
-      await api.post('/usuarios', session, { ...form, sucursal_id: form.sucursal_id || null });
+      await api.post('/usuarios', session, {
+        ...form,
+        acceso: form.acceso.trim().toLowerCase(),
+        sucursal_id: form.sucursal_id || null,
+      });
       setForm(VACIO);
       cargar();
     } catch (e) {
@@ -80,7 +95,12 @@ export default function Usuarios({ session, sucursales }) {
       <div className="panel">
         <h2>Nuevo usuario</h2>
         <div className="toolbar">
-          <input placeholder="Correo" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input
+            placeholder="Usuario (ej. maria.lopez) o correo"
+            autoCapitalize="none"
+            value={form.acceso}
+            onChange={(e) => setForm({ ...form, acceso: e.target.value })}
+          />
           <input
             type="password"
             placeholder="Contraseña"
@@ -125,21 +145,29 @@ export default function Usuarios({ session, sucursales }) {
           </label>
           <button
             className="boton-sm"
-            disabled={creando || !CORREO_VALIDO.test(form.email) || form.password.length < 6 || !form.nombre}
+            disabled={
+              creando || !form.acceso.trim() || problemaAcceso(form.acceso) || form.password.length < 6 || !form.nombre
+            }
             onClick={crear}
           >
-            Crear usuario
+            {creando ? 'Creando…' : 'Crear usuario'}
           </button>
-          {form.email && !CORREO_VALIDO.test(form.email) && (
-            <span style={{ color: '#ffb86b', fontSize: '0.85em', alignSelf: 'center' }}>Correo inválido</span>
-          )}
         </div>
+        {problemaAcceso(form.acceso) && (
+          <p style={{ color: '#ffb86b', fontSize: '0.85em', marginTop: -4 }}>{problemaAcceso(form.acceso)}</p>
+        )}
+        {form.acceso.trim() && !problemaAcceso(form.acceso) && (
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85em', marginTop: -4 }}>
+            Entrará escribiendo <strong style={{ color: 'var(--text)' }}>{form.acceso.trim().toLowerCase()}</strong> y su
+            contraseña (mínimo 6 caracteres).
+          </p>
+        )}
       </div>
 
       <div className="panel">
         <h2>Usuarios</h2>
         <div className="toolbar">
-          <input placeholder="Buscar por nombre o correo…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          <input placeholder="Buscar por nombre o usuario…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
           <select value={rolFiltro} onChange={(e) => setRolFiltro(e.target.value)}>
             <option value="">Todos los roles</option>
             <option value="cajero">Cajero</option>
@@ -151,7 +179,7 @@ export default function Usuarios({ session, sucursales }) {
           <thead>
             <tr>
               <th>Nombre</th>
-              <th>Correo</th>
+              <th>Usuario / correo</th>
               <th>Rol</th>
               <th>Sucursal</th>
               <th>Cierre ciego</th>
@@ -163,7 +191,7 @@ export default function Usuarios({ session, sucursales }) {
             {usuariosVisibles.map((u) => (
               <tr key={u.id}>
                 <td>{u.nombre}</td>
-                <td style={{ color: 'var(--text-dim)', fontSize: '0.9em' }}>{u.email ?? '—'}</td>
+                <td style={{ color: 'var(--text-dim)', fontSize: '0.9em' }}>{u.acceso ?? '—'}</td>
                 <td>{u.rol}</td>
                 <td>
                   {u.sucursal_id && (
