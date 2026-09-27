@@ -1,10 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { colorSucursal } from '../lib/coloresSucursal.js';
 
 export default function Sucursales({ session, sucursales, onCreada }) {
   const [form, setForm] = useState({ nombre: '', alias: '', direccion: '' });
   const [error, setError] = useState('');
   const [ultimaCreada, setUltimaCreada] = useState(null);
+  const [estadosCai, setEstadosCai] = useState([]);
+
+  useEffect(() => {
+    api
+      .get('/puntos-emision/estado', session)
+      .then(setEstadosCai)
+      .catch(() => {});
+  }, []);
+
+  function estadoCaiDe(sucursalId) {
+    return estadosCai.find((e) => e.sucursal_id === sucursalId);
+  }
 
   async function crear() {
     setError('');
@@ -29,16 +42,39 @@ export default function Sucursales({ session, sucursales, onCreada }) {
               <th>Nombre</th>
               <th>Alias</th>
               <th>Dirección</th>
+              <th>CAI</th>
             </tr>
           </thead>
           <tbody>
-            {sucursales.map((s) => (
-              <tr key={s.id}>
-                <td>{s.nombre}</td>
-                <td>{s.alias}</td>
-                <td>{s.direccion}</td>
-              </tr>
-            ))}
+            {sucursales.map((s) => {
+              const estado = estadoCaiDe(s.id);
+              return (
+                <tr key={s.id}>
+                  <td>
+                    <span
+                      className="leyenda-punto"
+                      style={{ background: colorSucursal(s.id), display: 'inline-block', marginRight: 6 }}
+                    />
+                    {s.nombre}
+                  </td>
+                  <td>{s.alias}</td>
+                  <td>{s.direccion}</td>
+                  <td>
+                    {estado?.es_borrador && <span className="badge-borrador">Borrador</span>}
+                    {estado && !estado.es_borrador && !estado.alerta && (
+                      <span className="chip" style={{ color: '#7ee787', borderColor: '#7ee787' }}>
+                        Activo
+                      </span>
+                    )}
+                    {estado && !estado.es_borrador && estado.alerta && (
+                      <span className="chip" style={{ color: '#ffb86b', borderColor: '#ffb86b' }}>
+                        Por vencer/agotarse
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

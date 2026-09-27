@@ -1,13 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+
+const fmtL = (n) => `L ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function Catalogo({ session }) {
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
   const [nuevaCategoria, setNuevaCategoria] = useState('');
   const [form, setForm] = useState({ codigo: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' });
   const [editandoId, setEditandoId] = useState(null);
   const [error, setError] = useState('');
+
+  const productosVisibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return productos;
+    return productos.filter(
+      (p) => p.nombre.toLowerCase().includes(q) || (p.codigo ?? '').toLowerCase().includes(q)
+    );
+  }, [productos, busqueda]);
 
   async function cargar() {
     setCategorias(await api.get('/categorias', session));
@@ -130,6 +141,14 @@ export default function Catalogo({ session }) {
           )}
         </div>
 
+        <div className="toolbar">
+          <input
+            placeholder="Buscar por nombre o código…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
+
         <table className="tabla">
           <thead>
             <tr>
@@ -143,12 +162,12 @@ export default function Catalogo({ session }) {
             </tr>
           </thead>
           <tbody>
-            {productos.map((p) => (
+            {productosVisibles.map((p) => (
               <tr key={p.id}>
                 <td>{p.codigo}</td>
                 <td>{p.nombre}</td>
                 <td>{p.categorias?.nombre ?? '—'}</td>
-                <td>L {Number(p.precio).toFixed(2)}</td>
+                <td>{fmtL(p.precio)}</td>
                 <td>{(p.impuesto1_tasa * 100).toFixed(0)}%</td>
                 <td>{p.activo ? 'Sí' : 'No'}</td>
                 <td>

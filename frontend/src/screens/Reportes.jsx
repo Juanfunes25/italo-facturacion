@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { descargarCsv } from '../lib/csv.js';
+import { ATAJOS_FECHA } from '../lib/rangosFecha.js';
 
 function primerDiaMes() {
   const d = new Date();
@@ -42,6 +44,15 @@ export default function Reportes({ session, sucursales }) {
           </select>
           <input type="date" value={filtros.fechaInicio} onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })} />
           <input type="date" value={filtros.fechaFin} onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })} />
+          {ATAJOS_FECHA.map((a) => (
+            <button
+              key={a.etiqueta}
+              className="boton-sm boton-secundario"
+              onClick={() => setFiltros({ ...filtros, ...a.calcular() })}
+            >
+              {a.etiqueta}
+            </button>
+          ))}
           <button className="boton-sm" onClick={generar}>
             Generar
           </button>
@@ -50,7 +61,21 @@ export default function Reportes({ session, sucursales }) {
 
       {ventas && (
         <div className="panel">
-          <h2>Ventas</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Ventas</h2>
+            <button
+              className="boton-sm boton-secundario"
+              onClick={() =>
+                descargarCsv(`ventas-${filtros.fechaInicio}-a-${filtros.fechaFin || 'hoy'}.csv`, ventas.por_dia, [
+                  { titulo: 'Día', valor: (d) => d.fecha },
+                  { titulo: 'Facturas', valor: (d) => d.cantidad_facturas },
+                  { titulo: 'Total', valor: (d) => Number(d.total).toFixed(2) },
+                ])
+              }
+            >
+              Exportar CSV
+            </button>
+          </div>
           <p>
             Total: <strong>L {Number(ventas.total).toFixed(2)}</strong> · {ventas.cantidad_facturas} facturas
           </p>

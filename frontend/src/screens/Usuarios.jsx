@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { colorSucursal } from '../lib/coloresSucursal.js';
+
+const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const VACIO = {
   email: '',
@@ -42,6 +45,17 @@ export default function Usuarios({ session, sucursales }) {
   async function actualizar(u, cambios) {
     await api.put(`/usuarios/${u.id}`, session, { ...u, ...cambios, sucursal_id: u.sucursal_id ?? null });
     cargar();
+  }
+
+  async function restablecerContrasena(u) {
+    const nueva = window.prompt(`Nueva contraseña para ${u.nombre} (mínimo 6 caracteres):`);
+    if (!nueva) return;
+    try {
+      await api.post(`/usuarios/${u.id}/reset-password`, session, { password: nueva });
+      window.alert('Contraseña actualizada.');
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   return (
@@ -93,9 +107,16 @@ export default function Usuarios({ session, sucursales }) {
             />
             Sin horario
           </label>
-          <button className="boton-sm" disabled={creando || !form.email || !form.password || !form.nombre} onClick={crear}>
+          <button
+            className="boton-sm"
+            disabled={creando || !CORREO_VALIDO.test(form.email) || form.password.length < 6 || !form.nombre}
+            onClick={crear}
+          >
             Crear usuario
           </button>
+          {form.email && !CORREO_VALIDO.test(form.email) && (
+            <span style={{ color: '#ffb86b', fontSize: '0.85em', alignSelf: 'center' }}>Correo inválido</span>
+          )}
         </div>
       </div>
 
@@ -117,15 +138,26 @@ export default function Usuarios({ session, sucursales }) {
               <tr key={u.id}>
                 <td>{u.nombre}</td>
                 <td>{u.rol}</td>
-                <td>{u.sucursales?.nombre ?? 'Todas'}</td>
+                <td>
+                  {u.sucursal_id && (
+                    <span
+                      className="leyenda-punto"
+                      style={{ background: colorSucursal(u.sucursal_id), display: 'inline-block', marginRight: 6 }}
+                    />
+                  )}
+                  {u.sucursales?.nombre ?? 'Todas'}
+                </td>
                 <td>{u.cierre_ciego ? 'Sí' : 'No'}</td>
                 <td>{u.activo ? 'Sí' : 'No'}</td>
-                <td>
+                <td style={{ whiteSpace: 'nowrap' }}>
                   <button
                     className="boton-sm boton-secundario"
                     onClick={() => actualizar(u, { activo: !u.activo })}
                   >
                     {u.activo ? 'Desactivar' : 'Activar'}
+                  </button>{' '}
+                  <button className="boton-sm boton-secundario" onClick={() => restablecerContrasena(u)}>
+                    Contraseña
                   </button>
                 </td>
               </tr>

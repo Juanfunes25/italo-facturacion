@@ -25,7 +25,12 @@ sucursales.post('/', requireRole('admin'), async (req, res) => {
     .insert({ nombre, alias, direccion })
     .select()
     .single();
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ error: `Ya existe una sucursal con el alias "${alias}" — usa uno distinto.` });
+    }
+    return res.status(400).json({ error: error.message });
+  }
 
   const { count } = await db.from('puntos_emision').select('id', { count: 'exact', head: true });
   const siguienteCodigo = String((count ?? 0) + 1).padStart(3, '0');

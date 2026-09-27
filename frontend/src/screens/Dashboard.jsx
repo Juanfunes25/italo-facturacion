@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { BarraHorizontal, BarrasVerticales, Leyenda } from '../components/Graficas.jsx';
 import { colorSucursal } from '../lib/coloresSucursal.js';
+import { ATAJOS_FECHA } from '../lib/rangosFecha.js';
 
 const COLOR_FORMA_PAGO = { Efectivo: 'var(--serie-1)', Tarjeta: 'var(--serie-2)', Transferencia: 'var(--serie-3)' };
 
@@ -57,6 +58,15 @@ export default function Dashboard({ session, sucursales }) {
           </select>
           <input type="date" value={filtros.fechaInicio} onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })} />
           <input type="date" value={filtros.fechaFin} onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })} />
+          {ATAJOS_FECHA.map((a) => (
+            <button
+              key={a.etiqueta}
+              className="boton-sm boton-secundario"
+              onClick={() => setFiltros({ ...filtros, ...a.calcular() })}
+            >
+              {a.etiqueta}
+            </button>
+          ))}
           <button className="boton-sm" disabled={cargando} onClick={consultar}>
             {cargando ? 'Consultando…' : 'Consultar'}
           </button>

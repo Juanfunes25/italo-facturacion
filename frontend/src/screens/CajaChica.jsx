@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+
+const fmtL = (n) => `L ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function CajaChica({ session, perfil, sucursales }) {
   const [movimientos, setMovimientos] = useState([]);
@@ -10,6 +12,8 @@ export default function CajaChica({ session, perfil, sucursales }) {
     concepto: '',
   });
   const [error, setError] = useState('');
+
+  const totalGastado = useMemo(() => movimientos.reduce((s, m) => s + Number(m.monto), 0), [movimientos]);
 
   async function cargar() {
     setMovimientos(await api.get(`/caja-chica?sucursal_id=${form.sucursal_id}`, session));
@@ -70,6 +74,10 @@ export default function CajaChica({ session, perfil, sucursales }) {
           </button>
         </div>
 
+        <p>
+          Total gastado en esta sucursal: <strong>{fmtL(totalGastado)}</strong>
+        </p>
+
         <table className="tabla">
           <thead>
             <tr>
@@ -86,7 +94,7 @@ export default function CajaChica({ session, perfil, sucursales }) {
                 <td>{m.fecha}</td>
                 <td>{m.tipo}</td>
                 <td>{m.concepto}</td>
-                <td>L {Number(m.monto).toFixed(2)}</td>
+                <td>{fmtL(m.monto)}</td>
                 <td>{m.perfiles?.nombre ?? '—'}</td>
               </tr>
             ))}

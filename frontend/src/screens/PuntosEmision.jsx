@@ -4,6 +4,7 @@ import { api } from '../api.js';
 export default function PuntosEmision({ session, perfil }) {
   const [puntos, setPuntos] = useState([]);
   const [editando, setEditando] = useState(null);
+  const [eraBorrador, setEraBorrador] = useState(false);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
 
@@ -17,6 +18,7 @@ export default function PuntosEmision({ session, perfil }) {
 
   function editar(pe) {
     setEditando(pe.id);
+    setEraBorrador(pe.es_borrador);
     setForm({
       cai: pe.cai ?? '',
       correlativo_desde: pe.correlativo_desde,
@@ -29,6 +31,12 @@ export default function PuntosEmision({ session, perfil }) {
 
   async function guardar() {
     setError('');
+    if (eraBorrador && !form.es_borrador) {
+      const confirmado = window.confirm(
+        'Vas a activar el CAI como REAL (deja de ser borrador). Desde ese momento, todas las facturas de esta sucursal tendrán validez fiscal. ¿Confirmaste el CAI, el rango y la fecha límite con tu contador? Esto no se puede deshacer fácilmente.'
+      );
+      if (!confirmado) return;
+    }
     try {
       await api.put(`/puntos-emision/${editando}`, session, {
         ...form,

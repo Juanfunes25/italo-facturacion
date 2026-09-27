@@ -56,3 +56,15 @@ usuarios.put('/:id', requireRole('admin'), async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
+
+// Para que Juan pueda resetear la contraseña de un cajero sin tener que
+// entrar al dashboard de Supabase.
+usuarios.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+  }
+  const { error } = await db.auth.admin.updateUserById(req.params.id, { password });
+  if (error) return res.status(400).json({ error: error.message });
+  res.json({ ok: true });
+});
