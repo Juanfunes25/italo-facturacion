@@ -79,8 +79,16 @@ function escaparHtml(texto) {
 // Página mínima para abrir el ticket en el navegador y mandarlo a imprimir
 // tal cual a la térmica (Ctrl+P / el botón imprime solo). El ancho en
 // caracteres define el tamaño de fuente para que la línea no se corte en
-// 40 u 48 columnas sin importar el zoom del navegador.
-export function envolverTicketHtml(textoTicket, ancho) {
+// 40 u 48 columnas sin importar el zoom del navegador. `copias` repite el
+// ticket completo N veces en la misma página — un solo Ctrl+P imprime todas
+// las copias seguidas, sin diálogos repetidos. `autoimprimir` dispara
+// window.print() apenas carga, para no depender de que el cajero haga clic.
+export function envolverTicketHtml(textoTicket, ancho, { copias = 1, autoimprimir = false } = {}) {
+  const copiasSeguras = Math.min(3, Math.max(1, Number(copias) || 1));
+  const bloques = Array.from({ length: copiasSeguras }, () => `<pre>${escaparHtml(textoTicket)}</pre>`).join(
+    '<div style="border-top: 1px dashed #999; margin: 6px 0;"></div>'
+  );
+
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -112,8 +120,9 @@ export function envolverTicketHtml(textoTicket, ancho) {
 </style>
 </head>
 <body>
-<button class="imprimir" onclick="window.print()">Imprimir</button>
-<pre>${escaparHtml(textoTicket)}</pre>
+<button class="imprimir" onclick="window.print()">Imprimir${copiasSeguras > 1 ? ` (${copiasSeguras} copias)` : ''}</button>
+${bloques}
+${autoimprimir ? '<script>window.onload = () => window.print();</script>' : ''}
 </body>
 </html>`;
 }

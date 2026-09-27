@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { PassThrough } from 'node:stream';
 
 // Factura completa tamaño carta, para descargar o enviar por correo.
 export function generarPdfFactura(venta, res) {
@@ -74,4 +75,18 @@ export function generarPdfFactura(venta, res) {
   doc.font('Helvetica');
 
   doc.end();
+}
+
+// Igual que generarPdfFactura pero devuelve el PDF como Buffer en memoria
+// (para adjuntarlo a un correo) en vez de escribirlo directo a una
+// respuesta HTTP.
+export function generarPdfFacturaBuffer(venta) {
+  return new Promise((resolve, reject) => {
+    const stream = new PassThrough();
+    const partes = [];
+    stream.on('data', (chunk) => partes.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(partes)));
+    stream.on('error', reject);
+    generarPdfFactura(venta, stream);
+  });
 }

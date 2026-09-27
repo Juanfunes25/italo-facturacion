@@ -1,8 +1,14 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { calcularTotales, round2 } from '../lib/facturacion.js';
+import { generarPdfFacturaBuffer } from '../lib/pdf.js';
+import { enviarFacturaCliente } from '../lib/correo.js';
 
 export const ventas = Router();
+
+// Monto a partir del cual se exige RTN del cliente (mismo criterio que el
+// "limiteRTN" que ya usaba WizPOS para esta empresa: L10,000).
+const UMBRAL_RTN_OBLIGATORIO = 10000;
 
 async function obtenerPuntoEmisionActivo(sucursal_id) {
   const { data, error } = await db
@@ -55,7 +61,7 @@ async function guardarDetalle(venta_id, lineas) {
 
 ventas.post('/', async (req, res) => {
   try {
-    const { sucursal_id, cliente_id, tipo_orden, items, descuento } = req.body;
+    const { sucursal_id, cliente_id, tipo_orden, items, descuento, nota_interna } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'sucursal_id es obligatorio' });
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La orden necesita al menos un producto' });
@@ -75,6 +81,7 @@ ventas.post('/', async (req, res) => {
         cliente_id: cliente?.id ?? null,
         cajero_id: req.perfil.id,
         tipo_orden: tipo_orden ?? null,
+        nota_interna: nota_interna || null,
         estado: 'abierta',
         subtotal_exento: totales.subtotal_exento,
         subtotal_exonerado: totales.subtotal_exonerado,
@@ -106,7 +113,7 @@ ventas.put('/:id', async (req, res) => {
       return res.status(409).json({ error: 'Sólo se pueden editar órdenes abiertas' });
     }
 
-    const { cliente_id, tipo_orden, items, descuento } = req.body;
+    const { cliente_id, tipo_orden, items, descuento, nota_interna } = req.body;
     const cliente = await obtenerCliente(cliente_id);
     const puedeEditarPrecio = req.perfil.rol !== 'cajero';
     const lineas = await construirItems(items, puedeEditarPrecio);
@@ -117,6 +124,7 @@ ventas.put('/:id', async (req, res) => {
       .update({
         cliente_id: cliente?.id ?? null,
         tipo_orden: tipo_orden ?? null,
+        nota_interna: nota_interna || null,
         subtotal_exento: totales.subtotal_exento,
         subtotal_exonerado: totales.subtotal_exonerado,
         subtotal_gravado_15: totales.subtotal_gravado_15,
@@ -193,10 +201,16 @@ ventas.post('/:id/pagar', async (req, res) => {
 
     const { data: venta, error: errVenta } = await db
       .from('ventas')
-      .select('*')
+      .select('*, clientes(nombre, rtn, email, exento_impuestos)')
       .eq('id', req.params.id)
       .single();
     if (errVenta || !venta) return res.status(404).json({ error: 'Orden no encontrada' });
+
+    if (Number(venta.total) > UMBRAL_RTN_OBLIGATORIO && !venta.clientes?.rtn) {
+      return res.status(400).json({
+        error: `Se requiere el RTN del cliente para ventas mayores a L${UMBRAL_RTN_OBLIGATORIO.toLocaleString('es-HN')}`,
+      });
+    }
 
     const totalPagado = round2(pagos.reduce((s, p) => s + Number(p.monto), 0));
     if (totalPagado < venta.total) {
@@ -216,9 +230,20 @@ ventas.post('/:id/pagar', async (req, res) => {
 
     const { data: puntoEmision } = await db
       .from('puntos_emision')
-      .select('es_borrador')
+      .select('es_borrador, cai, fecha_limite_emision')
       .eq('id', venta.punto_emision_id)
       .single();
+
+    // Correo con el PDF adjunto si el cliente tiene correo — no bloquea la
+    // respuesta del cobro ni falla la venta si el correo no está configurado.
+    if (venta.clientes?.email) {
+      obtenerVentaCompleta(venta.id)
+        .then(async (ventaCompleta) => {
+          const pdfBuffer = await generarPdfFacturaBuffer(ventaCompleta);
+          await enviarFacturaCliente(ventaCompleta, pdfBuffer);
+        })
+        .catch(() => {});
+    }
 
     res.json({ ...ventaFinal, es_borrador: puntoEmision?.es_borrador ?? true });
   } catch (e) {

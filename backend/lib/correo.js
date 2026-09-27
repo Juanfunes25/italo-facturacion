@@ -43,3 +43,33 @@ export async function enviarResumenCierre(cierre, sucursalNombre) {
     return { enviado: false, motivo: e.message };
   }
 }
+
+// Manda la factura en PDF al correo del cliente apenas se cobra (si el
+// cliente tiene correo registrado). Igual que el resumen de cierre: no-op
+// si no hay credenciales, nunca bloquea el cobro.
+export async function enviarFacturaCliente(venta, pdfBuffer) {
+  if (!transportadorDisponible()) return { enviado: false, motivo: 'GMAIL_USER/GMAIL_APP_PASSWORD no configurados' };
+  if (!venta.clientes?.email) return { enviado: false, motivo: 'El cliente no tiene correo registrado' };
+
+  const esBorrador = venta.puntos_emision?.es_borrador;
+  const asunto = `${esBorrador ? '[Documento interno] ' : ''}Factura ${venta.numero_factura} — Italo Gelateria`;
+  const cuerpo = `
+    <p>Hola ${venta.clientes?.nombre ?? ''},</p>
+    <p>Gracias por tu compra en Italo Gelateria. Adjunto va tu factura ${venta.numero_factura}.</p>
+    ${esBorrador ? '<p><strong>Nota:</strong> este documento es un comprobante interno, todavía sin validez fiscal.</p>' : ''}
+    <p>Total: L ${Number(venta.total).toFixed(2)}</p>
+  `;
+
+  try {
+    await crearTransportador().sendMail({
+      from: process.env.GMAIL_USER,
+      to: venta.clientes.email,
+      subject: asunto,
+      html: cuerpo,
+      attachments: [{ filename: `factura-${venta.numero_factura}.pdf`, content: pdfBuffer }],
+    });
+    return { enviado: true };
+  } catch (e) {
+    return { enviado: false, motivo: e.message };
+  }
+}

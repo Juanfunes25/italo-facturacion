@@ -43,6 +43,21 @@ puntosEmision.get('/estado', requireRole('admin', 'manager'), async (req, res) =
   res.json(data.map(calcularEstado));
 });
 
+// Versión reducida y accesible para cualquier rol (incluye cajero): sólo el
+// estado del punto de emisión de SU sucursal, para avisarle en el POS antes
+// de cobrar si el CAI está por vencer o agotarse — sin exponerle el estado
+// de las otras sucursales.
+puntosEmision.get('/sucursal/:sucursal_id/estado', async (req, res) => {
+  const { data, error } = await db
+    .from('puntos_emision')
+    .select('id, es_borrador, cai, fecha_limite_emision, correlativo_desde, correlativo_hasta, correlativo_actual, activo')
+    .eq('sucursal_id', req.params.sucursal_id)
+    .eq('activo', true)
+    .single();
+  if (error || !data) return res.status(404).json({ error: 'Sin punto de emisión activo para esta sucursal' });
+  res.json(calcularEstado(data));
+});
+
 // Activar el CAI real cuando el contador lo confirme ante el SAR. Deja de
 // ser borrador y las facturas emitidas desde ese momento son fiscales.
 puntosEmision.put('/:id', requireRole('admin'), async (req, res) => {

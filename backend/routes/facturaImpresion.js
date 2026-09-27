@@ -18,7 +18,12 @@ facturaImpresion.get('/:id/ticket', async (req, res) => {
   if (req.query.formato === 'texto') {
     return res.type('text/plain').send(texto);
   }
-  res.type('text/html').send(envolverTicketHtml(texto, ancho));
+  res.type('text/html').send(
+    envolverTicketHtml(texto, ancho, {
+      copias: req.query.copias,
+      autoimprimir: req.query.autoimprimir === '1',
+    })
+  );
 });
 
 facturaImpresion.get('/:id/pdf', async (req, res) => {
