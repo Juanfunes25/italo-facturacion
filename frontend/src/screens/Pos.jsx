@@ -145,7 +145,7 @@ function ModalOrdenesAbiertas({ ordenes, onSeleccionar, onCerrar }) {
   );
 }
 
-export default function Pos({ session, perfil, sucursales }) {
+export default function Pos({ session, perfil, sucursales, onIrA }) {
   const [sucursalId, setSucursalId] = useState(perfil.sucursal_id ?? sucursales[0]?.id ?? '');
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -438,6 +438,11 @@ export default function Pos({ session, perfil, sucursales }) {
           <button className="boton-secundario" onClick={abrirOrdenesAbiertas}>
             Órdenes Abiertas
           </button>
+          {onIrA && (
+            <button className="boton-secundario" onClick={() => onIrA('facturas')} style={{ gridColumn: '1 / -1' }}>
+              Buscar
+            </button>
+          )}
           <button disabled={carrito.length === 0} onClick={() => setMostrarPago(true)} style={{ gridColumn: '1 / -1' }}>
             Procesar Pago
           </button>

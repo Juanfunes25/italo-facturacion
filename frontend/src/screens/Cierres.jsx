@@ -131,6 +131,15 @@ export default function Cierres({ session, perfil, sucursales }) {
                 {Number(resultado.diferencia).toFixed(2)}
               </>
             )}
+            {resultado.desglose_pagos?.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                {resultado.desglose_pagos.map((p) => (
+                  <span key={p.nombre} className="chip" style={{ marginRight: 6 }}>
+                    {p.nombre}: L {Number(p.monto).toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -149,6 +158,7 @@ export default function Cierres({ session, perfil, sucursales }) {
                 <th>Esperado</th>
                 <th>Contado</th>
                 <th>Diferencia</th>
+                <th>Formas de pago</th>
               </tr>
             </thead>
             <tbody>
@@ -163,6 +173,10 @@ export default function Cierres({ session, perfil, sucursales }) {
                   <td>L {Number(c.total_contado).toFixed(2)}</td>
                   <td style={{ color: Number(c.diferencia) !== 0 ? '#ff8080' : undefined }}>
                     L {Number(c.diferencia).toFixed(2)}
+                  </td>
+                  <td style={{ fontSize: '0.85em', color: 'var(--text-dim)' }}>
+                    {(c.desglose_pagos ?? []).map((p) => `${p.nombre}: L${Number(p.monto).toFixed(0)}`).join(' · ') ||
+                      '—'}
                   </td>
                 </tr>
               ))}

@@ -17,6 +17,7 @@ import { cajaChica } from './routes/cajaChica.js';
 import { usuarios } from './routes/usuarios.js';
 import { facturaImpresion } from './routes/facturaImpresion.js';
 import { sucursales } from './routes/sucursales.js';
+import { dashboard } from './routes/dashboard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -57,6 +58,7 @@ app.use('/api/cierres', cierres);
 app.use('/api/reportes', reportes);
 app.use('/api/caja-chica', cajaChica);
 app.use('/api/usuarios', usuarios);
+app.use('/api/dashboard', dashboard);
 
 // Sirve el build del frontend (mismo patrón que italo-reposicion: un solo
 // servicio Render, backend + frontend estático).

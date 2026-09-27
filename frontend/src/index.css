@@ -6,6 +6,17 @@
   --text: #eef1f6;
   --text-dim: #94a1b8;
   --border: #22304a;
+
+  /* Paleta categórica del dashboard — 4 slots, orden fijo, validada contra
+     el fondo navy con scripts/validate_palette.js del skill dataviz
+     (banda de luminosidad, piso CVD y contraste >= 3:1 todos en PASS con
+     este orden). --serie-3 es un paso más oscuro del dorado de marca: el
+     dorado real (--gold) es demasiado claro para usarse como marca de
+     dato sobre este fondo. No reordenar sin volver a correr el validador. */
+  --serie-1: #c5603c; /* terracota — igual a --terracota */
+  --serie-2: #2e9e8f; /* verde-azulado */
+  --serie-3: #b08d28; /* dorado (paso oscuro) */
+  --serie-4: #6c7fd6; /* azul-violeta */
 }
 
 * {
@@ -344,4 +355,146 @@ table.tabla th {
   justify-content: center;
   z-index: 10;
   padding: 16px;
+}
+
+/* ── Dashboard: KPIs y gráficas ───────────────────────────────────────── */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi-tile {
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.kpi-tile .kpi-label {
+  font-size: 0.78em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-tile .kpi-valor {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.8em;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.leyenda {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 0.85em;
+  color: var(--text-dim);
+}
+
+.leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leyenda-punto {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.barra-h-fila {
+  display: grid;
+  grid-template-columns: 140px 1fr 90px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
+.barra-h-etiqueta {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barra-h-pista {
+  background: var(--navy);
+  border-radius: 4px;
+  height: 14px;
+  overflow: hidden;
+}
+
+.barra-h-relleno {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  min-width: 4px;
+}
+
+.barra-h-valor {
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.barras-verticales {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 160px;
+  padding-top: 20px;
+}
+
+.barra-v-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+
+.barra-v-valor {
+  font-size: 0.72em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+.barra-v-relleno {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.barra-v-etiqueta {
+  font-size: 0.7em;
+  color: var(--text-dim);
+  margin-top: 6px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dos-columnas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .dos-columnas {
+    grid-template-columns: 1fr;
+  }
 }

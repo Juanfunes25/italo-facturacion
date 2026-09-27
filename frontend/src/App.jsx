@@ -11,6 +11,7 @@ import Reportes from './screens/Reportes.jsx';
 import PuntosEmision from './screens/PuntosEmision.jsx';
 import CajaChica from './screens/CajaChica.jsx';
 import Sucursales from './screens/Sucursales.jsx';
+import Dashboard from './screens/Dashboard.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [email, setEmail] = useState('');
@@ -50,6 +51,7 @@ function PantallaLogin({ onEntrar }) {
 }
 
 const PANTALLAS = [
+  { id: 'dashboard', etiqueta: 'Dashboard', roles: ['admin', 'manager'], Componente: Dashboard },
   { id: 'pos', etiqueta: 'Facturación', roles: ['admin', 'manager', 'cajero'], Componente: Pos },
   { id: 'facturas', etiqueta: 'Facturas', roles: ['admin', 'manager', 'cajero'], Componente: Facturas },
   { id: 'cierres', etiqueta: 'Cierre de caja', roles: ['admin', 'manager', 'cajero'], Componente: Cierres },
@@ -122,7 +124,13 @@ function PantallaApp({ session, onSalir }) {
         </button>
       </nav>
       <div className="contenido">
-        <Componente session={session} perfil={perfil} sucursales={sucursales} onCreada={recargarSucursales} />
+        <Componente
+          session={session}
+          perfil={perfil}
+          sucursales={sucursales}
+          onCreada={recargarSucursales}
+          onIrA={setPantallaActiva}
+        />
       </div>
     </div>
   );

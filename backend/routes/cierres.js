@@ -24,7 +24,7 @@ cierres.post('/', async (req, res) => {
 
     const { data: ventasDelTurno, error } = await db
       .from('ventas')
-      .select('total, numero_factura, correlativo, anulada')
+      .select('id, total, numero_factura, correlativo, anulada')
       .eq('sucursal_id', sucursal_id)
       .eq('estado', 'pagada')
       .gte('fecha_emision', fecha_inicio)
@@ -35,11 +35,29 @@ cierres.post('/', async (req, res) => {
     // El correlativo emitido cuenta igual (nunca se le quita el número a una
     // factura anulada), pero el efectivo que se devolvió al anularla no debe
     // sumar al total esperado en caja.
-    const totalVentas = round2(
-      ventasDelTurno.filter((v) => !v.anulada).reduce((s, v) => s + Number(v.total), 0)
-    );
+    const ventasValidas = ventasDelTurno.filter((v) => !v.anulada);
+    const totalVentas = round2(ventasValidas.reduce((s, v) => s + Number(v.total), 0));
     const factura_desde = ventasDelTurno[0]?.numero_factura ?? null;
     const factura_hasta = ventasDelTurno[ventasDelTurno.length - 1]?.numero_factura ?? null;
+
+    // Desglose por forma de pago (efectivo/tarjeta/transferencia) del turno.
+    let desglosePagos = [];
+    if (ventasValidas.length > 0) {
+      const { data: pagosDb, error: errPagos } = await db
+        .from('venta_pagos')
+        .select('monto, formas_pago(nombre)')
+        .in(
+          'venta_id',
+          ventasValidas.map((v) => v.id)
+        );
+      if (errPagos) throw new Error(errPagos.message);
+      const porForma = new Map();
+      for (const p of pagosDb) {
+        const nombre = p.formas_pago?.nombre ?? 'Otro';
+        porForma.set(nombre, round2((porForma.get(nombre) || 0) + Number(p.monto)));
+      }
+      desglosePagos = [...porForma.entries()].map(([nombre, monto]) => ({ nombre, monto }));
+    }
 
     const total_esperado = round2(totalVentas + Number(fondo_caja || 0) - Number(salidas || 0));
     const total_contado = round2(Number(efectivo_contado || 0));
@@ -63,6 +81,7 @@ cierres.post('/', async (req, res) => {
         total_esperado,
         total_contado,
         diferencia,
+        desglose_pagos: desglosePagos,
         cierre_ciego: req.perfil.cierre_ciego,
         estado: 'cerrado',
       })
