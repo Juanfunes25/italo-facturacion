@@ -52,9 +52,24 @@ async function construirItems(itemsSolicitados, puedeEditarPrecio) {
   });
 }
 
+// calcularLineas() (backend/lib/facturacion.js) agrega "base", "isv" y
+// "bucket" a cada línea para calcular los subtotales fiscales — son campos
+// de trabajo, no columnas de la tabla. Antes se insertaban tal cual junto
+// con el resto, y Postgres rechazaba el insert entero ("Could not find the
+// 'base' column of 'detalle_venta'"), lo que hacía fallar SIEMPRE el
+// guardado de la orden (autoguardado, y por lo tanto también el cobro).
 async function guardarDetalle(venta_id, lineas) {
   await db.from('detalle_venta').delete().eq('venta_id', venta_id);
-  const filas = lineas.map((l) => ({ venta_id, ...l }));
+  const filas = lineas.map((l) => ({
+    venta_id,
+    producto_id: l.producto_id,
+    nombre_producto: l.nombre_producto,
+    cantidad: l.cantidad,
+    precio_unitario: l.precio_unitario,
+    descuento: l.descuento,
+    impuesto_tasa: l.impuesto_tasa,
+    monto: l.monto,
+  }));
   const { error } = await db.from('detalle_venta').insert(filas);
   if (error) throw new Error(error.message);
 }
