@@ -240,8 +240,7 @@ function ModalOrdenesAbiertas({ ordenes, cargando, onSeleccionar, onCerrar }) {
   );
 }
 
-export default function Pos({ session, perfil, sucursales, onIrA }) {
-  const [sucursalId, setSucursalId] = useState(perfil.sucursal_id ?? sucursales[0]?.id ?? '');
+export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, onCambiarSucursalId, onCarritoOcupado }) {
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
   const [categoriaActivaId, setCategoriaActivaId] = useState(null);
@@ -296,6 +295,16 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
   useEffect(() => {
     buscadorRef.current?.focus();
   }, []);
+
+  // Avisa hacia arriba si hay una orden en curso — el selector de
+  // sucursal vive en la barra de navegación (fuera de este componente) y
+  // se bloquea mientras haya productos, para no mezclar una venta a
+  // medias con el punto de emisión de otra sucursal.
+  useEffect(() => {
+    onCarritoOcupado?.(carrito.length > 0);
+    return () => onCarritoOcupado?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrito.length]);
 
   // #32 — indicador de conexión: el autoguardado depende de la red.
   useEffect(() => {
@@ -502,7 +511,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
           cantidad: d.cantidad,
         }))
       );
-      setSucursalId(detalle.sucursal_id);
+      onCambiarSucursalId?.(detalle.sucursal_id);
       setMostrarOrdenes(false);
     } catch (e) {
       setError(e.message);
@@ -570,31 +579,9 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
 
   const sucursalActual = sucursales.find((s) => s.id === sucursalId);
 
-  function cambiarSucursal(nuevoId) {
-    const nombre = sucursales.find((s) => s.id === nuevoId)?.nombre ?? '';
-    if (!window.confirm(`¿Cambiar a "${nombre}"? Vas a facturar ahí hasta que la cambies de nuevo.`)) return;
-    setSucursalId(nuevoId);
-  }
-
   return (
     <div className="pos-grid">
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 12,
-            right: 12,
-            background: 'var(--terracota)',
-            color: 'white',
-            padding: '8px 14px',
-            borderRadius: 8,
-            zIndex: 50,
-            fontSize: '0.9em',
-          }}
-        >
-          {toast}
-        </div>
-      )}
+      {toast && <div className="pos-toast">{toast}</div>}
 
       {resultadoFactura && (
         <div className="overlay">
@@ -711,37 +698,15 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
       </div>
 
       <div className="pos-panel">
+        {/* El cambio de sucursal vive en la barra de navegación (arriba de
+            toda la app, siempre visible) — acá sólo se muestra en qué
+            sucursal se está facturando, como recordatorio dentro del
+            flujo de cobro. Sacarlo de acá evita que se toque por error
+            en medio de una venta. */}
         {sucursalActual && (
-          <div
-            style={{
-              background: colorSucursal(sucursalId),
-              color: '#fff',
-              fontWeight: 700,
-              padding: '10px 12px',
-              borderRadius: 8,
-              marginBottom: 10,
-              fontFamily: "'Barlow Condensed', sans-serif",
-              fontSize: '1.2em',
-              textTransform: 'uppercase',
-              letterSpacing: '0.03em',
-              textAlign: 'center',
-            }}
-          >
+          <div className="pos-sucursal-banner" style={{ background: colorSucursal(sucursalId) }}>
             {sucursalActual.nombre}
           </div>
-        )}
-        {/* Un cajero con sucursal fija (perfil.sucursal_id) NUNCA ve el
-            selector — así no hay forma de cobrar por error en otra
-            sucursal. Sólo admin/manager (sin sucursal fija) pueden
-            cambiar, y se les pide confirmar cada vez. */}
-        {!perfil.sucursal_id && sucursales.length > 1 && (
-          <select value={sucursalId} disabled={carrito.length > 0} onChange={(e) => cambiarSucursal(e.target.value)}>
-            {sucursales.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </select>
         )}
         {sinPuntoEmision && (
           <div className="alerta">Esta sucursal no tiene un punto de emisión activo — no se puede facturar.</div>
@@ -865,48 +830,25 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
         {/* Un solo toque cobra de inmediato — nada de abrir un menú y
             después elegir. Efectivo y Tarjeta bien separados para que no
             se confundan a la hora de cobrar. */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 14,
-            marginTop: 10,
-          }}
-        >
+        <div className="pos-botones-cobro">
           <button
+            className="boton-cobro efectivo"
             disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
             onClick={() => pagoInstantaneo('efectivo')}
-            style={{
-              background: '#19703c',
-              padding: '18px 8px',
-              fontSize: '1.05em',
-              borderRadius: 10,
-            }}
           >
-            💵
-            <br />
+            <span className="boton-cobro-icono">💵</span>
             EFECTIVO
           </button>
           <button
+            className="boton-cobro tarjeta"
             disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
             onClick={() => pagoInstantaneo('tarjeta')}
-            style={{
-              background: '#2a6fb0',
-              padding: '18px 8px',
-              fontSize: '1.05em',
-              borderRadius: 10,
-            }}
           >
-            💳
-            <br />
+            <span className="boton-cobro-icono">💳</span>
             TARJETA
           </button>
         </div>
-        {guardandoPago && (
-          <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85em', marginTop: 6 }}>
-            Procesando…
-          </p>
-        )}
+        {guardandoPago && <p className="pos-procesando">Procesando…</p>}
         <button
           className="boton-secundario boton-sm"
           style={{ marginTop: 8 }}

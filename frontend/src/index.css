@@ -1,11 +1,14 @@
 :root {
   --navy: #0b1220;
   --navy-panel: #131c2e;
+  --navy-elevada: #182238;
   --terracota: #c5603c;
+  --terracota-claro: #d97a56;
   --gold: #d4af37;
   --text: #eef1f6;
   --text-dim: #94a1b8;
   --border: #22304a;
+  --color-sucursal: var(--terracota);
 
   /* Paleta categórica del dashboard — 4 slots, orden fijo, validada contra
      el fondo navy con scripts/validate_palette.js del skill dataviz
@@ -17,6 +20,13 @@
   --serie-2: #2e9e8f; /* verde-azulado */
   --serie-3: #b08d28; /* dorado (paso oscuro) */
   --serie-4: #6c7fd6; /* azul-violeta */
+
+  --radio: 10px;
+  --radio-chico: 7px;
+  --sombra-suave: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --sombra: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --sombra-flotante: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --veloz: 0.14s ease;
 }
 
 * {
@@ -28,12 +38,42 @@ body {
   background: var(--navy);
   color: var(--text);
   font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3 {
   font-family: 'Barlow Condensed', sans-serif;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+/* Scrollbar consistente con el tema oscuro (Chrome/Edge/Safari + Firefox). */
+* {
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-sucursal);
+  outline-offset: 2px;
 }
 
 .pantalla {
@@ -47,10 +87,12 @@ h1, h2, h3 {
 .tarjeta {
   background: var(--navy-panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 32px;
   width: 100%;
   max-width: 380px;
+  box-shadow: var(--sombra-flotante);
+  animation: aparecer-tarjeta 0.18s ease;
 }
 
 .tarjeta h1 {
@@ -58,36 +100,93 @@ h1, h2, h3 {
   margin-top: 0;
 }
 
-input {
+@keyframes aparecer-tarjeta {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+input, textarea {
   width: 100%;
   padding: 10px 12px;
   margin-bottom: 12px;
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   border: 1px solid var(--border);
   background: var(--navy);
   color: var(--text);
+  transition: border-color var(--veloz), box-shadow var(--veloz);
+}
+
+input:hover, textarea:hover {
+  border-color: #364766;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--color-sucursal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-sucursal) 25%, transparent);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-dim);
 }
 
 button {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   border: none;
   background: var(--terracota);
   color: white;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--sombra-suave);
+  transition: filter var(--veloz), box-shadow var(--veloz), transform 0.08s ease, background-color var(--veloz),
+    border-color var(--veloz), opacity var(--veloz);
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+  box-shadow: var(--sombra-suave);
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
+  box-shadow: none;
 }
 
 .error {
   color: #ff8080;
+  background: rgba(138, 44, 44, 0.15);
+  border: 1px solid rgba(255, 128, 128, 0.35);
+  border-radius: var(--radio-chico);
+  padding: 8px 12px;
   font-size: 0.9em;
   margin-bottom: 12px;
+  animation: aparecer 0.15s ease;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .chip {
@@ -98,6 +197,7 @@ button:disabled {
   padding: 2px 10px;
   font-size: 0.8em;
   margin-top: 8px;
+  transition: background-color var(--veloz);
 }
 
 /* ── Layout general de la app (una vez logueado) ─────────────────────── */
@@ -109,13 +209,18 @@ button:disabled {
 }
 
 .nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 10px 16px;
   background: var(--navy-panel);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 3px solid var(--color-sucursal);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   overflow-x: auto;
+  transition: border-color 0.25s ease;
 }
 
 .nav .marca {
@@ -133,11 +238,22 @@ button:disabled {
   color: var(--text-dim);
   padding: 8px 14px;
   white-space: nowrap;
+  box-shadow: none;
+}
+
+.nav button:hover:not(:disabled):not(.activo) {
+  color: var(--text);
+  filter: none;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .nav button.activo {
   background: var(--navy);
-  color: var(--gold);
+  color: var(--color-sucursal);
+}
+
+.nav button.activo:hover {
+  filter: none;
 }
 
 .nav .salir {
@@ -145,6 +261,60 @@ button:disabled {
   background: transparent;
   color: var(--text-dim);
   width: auto;
+}
+
+/* ── Indicador de sucursal en la barra de navegación ─────────────────── */
+
+.nav-sucursal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 10px;
+  padding: 5px 10px 5px 8px;
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.nav-sucursal-punto {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-sucursal);
+  flex-shrink: 0;
+  transition: background-color 0.25s ease;
+}
+
+.nav-sucursal-nombre {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.92em;
+  color: var(--text);
+}
+
+.nav-sucursal-select {
+  width: auto;
+  margin-bottom: 0;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.92em;
+  cursor: pointer;
+}
+
+.nav-sucursal-select:focus {
+  box-shadow: none;
+  outline: 2px solid var(--color-sucursal);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .contenido {
@@ -155,9 +325,11 @@ button:disabled {
 .panel {
   background: var(--navy-panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radio);
   padding: 20px;
   margin-bottom: 16px;
+  box-shadow: var(--sombra);
+  animation: aparecer 0.2s ease;
 }
 
 .panel h2 {
@@ -183,12 +355,20 @@ button:disabled {
   width: auto;
   padding: 6px 12px;
   font-size: 0.85em;
+  box-shadow: none;
 }
 
 .boton-secundario {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
+  box-shadow: none;
+}
+
+.boton-secundario:hover:not(:disabled) {
+  border-color: var(--color-sucursal);
+  background: rgba(255, 255, 255, 0.03);
+  filter: none;
 }
 
 .boton-peligro {
@@ -199,10 +379,15 @@ select {
   width: 100%;
   padding: 10px 12px;
   margin-bottom: 12px;
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   border: 1px solid var(--border);
   background: var(--navy);
   color: var(--text);
+  transition: border-color var(--veloz), box-shadow var(--veloz);
+}
+
+select:hover {
+  border-color: #364766;
 }
 
 table.tabla {
@@ -213,7 +398,7 @@ table.tabla {
 
 table.tabla th, table.tabla td {
   text-align: left;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -224,13 +409,22 @@ table.tabla th {
   font-size: 0.8em;
 }
 
+table.tabla tbody tr {
+  transition: background-color var(--veloz);
+}
+
+table.tabla tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
 .alerta {
   background: #3a2410;
   border: 1px solid var(--gold);
   color: var(--gold);
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   padding: 10px 14px;
   margin-bottom: 12px;
+  animation: aparecer 0.15s ease;
 }
 
 .badge-borrador {
@@ -243,6 +437,47 @@ table.tabla th {
   font-size: 0.75em;
   font-weight: 600;
   margin-bottom: 8px;
+}
+
+.pos-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  background: var(--terracota);
+  color: white;
+  padding: 9px 16px;
+  border-radius: var(--radio-chico);
+  z-index: 50;
+  font-size: 0.9em;
+  font-weight: 600;
+  box-shadow: var(--sombra-flotante);
+  animation: entra-toast 0.2s ease;
+}
+
+@keyframes entra-toast {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pos-sucursal-banner {
+  color: #fff;
+  font-weight: 700;
+  padding: 11px 12px;
+  border-radius: var(--radio-chico);
+  margin-bottom: 10px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 1.2em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: center;
+  box-shadow: var(--sombra-suave);
+  transition: background-color 0.25s ease;
 }
 
 /* ── POS ──────────────────────────────────────────────────────────────── */
@@ -264,9 +499,10 @@ table.tabla th {
 .pos-panel {
   background: var(--navy-panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radio);
   padding: 12px;
   overflow-y: auto;
+  box-shadow: var(--sombra);
 }
 
 .pos-categoria {
@@ -276,11 +512,18 @@ table.tabla th {
   color: var(--text);
   border: 1px solid var(--border);
   text-align: left;
+  box-shadow: none;
+}
+
+.pos-categoria:hover:not(.activa) {
+  border-color: var(--terracota-claro);
+  filter: none;
 }
 
 .pos-categoria.activa {
   background: var(--terracota);
   color: white;
+  border-color: var(--terracota);
 }
 
 .pos-productos {
@@ -293,11 +536,25 @@ table.tabla th {
 .pos-producto {
   background: var(--navy);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   padding: 12px 8px;
   text-align: center;
   color: var(--text);
   height: 80px;
+  box-shadow: var(--sombra-suave);
+  transition: border-color var(--veloz), transform 0.1s ease, box-shadow var(--veloz), background-color var(--veloz);
+}
+
+.pos-producto:hover {
+  border-color: var(--terracota);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  filter: none;
+}
+
+.pos-producto:active {
+  transform: translateY(0) scale(0.96);
+  background: var(--navy-elevada);
 }
 
 .pos-producto strong {
@@ -310,16 +567,18 @@ table.tabla th {
   display: flex;
   justify-content: space-between;
   gap: 6px;
-  padding: 6px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
   font-size: 0.9em;
+  animation: aparecer 0.15s ease;
 }
 
 .pos-orden-linea button {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   font-size: 0.8em;
+  border-radius: 6px;
 }
 
 .pos-totales-fila {
@@ -346,15 +605,86 @@ table.tabla th {
   margin-top: 10px;
 }
 
+/* ── Botones de cobro directo (Efectivo/Tarjeta) ─────────────────────── */
+
+.pos-botones-cobro {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.boton-cobro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 8px;
+  font-size: 1.05em;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.03em;
+  border-radius: var(--radio);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.boton-cobro-icono {
+  font-size: 1.6em;
+  line-height: 1;
+}
+
+/* Ambos extremos del degradado verificados en contraste WCAG AA sobre
+   texto blanco (>= 4.5:1: 5.38:1 y 10.36:1 para el verde, 5.02:1 y 9.27:1
+   para el azul) — un degradado con el extremo claro por debajo de 4.5:1
+   se ve bien pero deja de ser accesible en esa franja del botón. */
+.boton-cobro.efectivo {
+  background: linear-gradient(160deg, #1a7a42, #0f4a26);
+}
+
+.boton-cobro.tarjeta {
+  background: linear-gradient(160deg, #2c72b5, #1a4a72);
+}
+
+.boton-cobro:hover:not(:disabled) {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  transform: translateY(-1px);
+}
+
+.boton-cobro:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+}
+
+.pos-procesando {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85em;
+  margin-top: 6px;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
   padding: 16px;
+  animation: aparecer-fondo 0.15s ease;
+}
+
+.overlay .tarjeta {
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+@keyframes aparecer-fondo {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ── Dashboard: KPIs y gráficas ───────────────────────────────────────── */
@@ -371,6 +701,13 @@ table.tabla th {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 16px;
+  box-shadow: var(--sombra-suave);
+  transition: border-color var(--veloz), transform var(--veloz);
+}
+
+.kpi-tile:hover {
+  border-color: var(--terracota);
+  transform: translateY(-2px);
 }
 
 .kpi-tile .kpi-label {
@@ -407,6 +744,7 @@ table.tabla th {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
 }
 
 .barra-h-fila {

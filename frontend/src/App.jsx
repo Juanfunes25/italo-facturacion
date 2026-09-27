@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from './supabaseClient.js';
 import { api } from './api.js';
+import { colorSucursal } from './lib/coloresSucursal.js';
 import Pos from './screens/Pos.jsx';
 import Facturas from './screens/Facturas.jsx';
 import Catalogo from './screens/Catalogo.jsx';
@@ -72,6 +73,15 @@ function PantallaApp({ session, onSalir }) {
   const [error, setError] = useState('');
   const [pantallaActiva, setPantallaActiva] = useState('pos');
   const [filtroFacturas, setFiltroFacturas] = useState(null);
+  // Sucursal en la que se está facturando ahora mismo — vive acá (no
+  // dentro de cada pantalla) para que el color se pueda aplicar a toda la
+  // app (barra de navegación incluida) y no se pierda al cambiar de
+  // pantalla y volver.
+  const [sucursalActivaId, setSucursalActivaId] = useState('');
+  // Facturación avisa cuando hay una orden en curso, para no permitir
+  // cambiar de sucursal a medio cobro y mezclar la venta con el punto de
+  // emisión de otra sucursal.
+  const [carritoOcupado, setCarritoOcupado] = useState(false);
 
   // "Ver facturas" desde Clientes (y similares) navegan a otra pantalla
   // llevando un filtro ya armado, en vez de que el cajero tenga que
@@ -90,9 +100,24 @@ function PantallaApp({ session, onSalir }) {
       .then(([perfil, sucursales]) => {
         setPerfil(perfil);
         setSucursales(sucursales);
+        setSucursalActivaId((actual) => actual || perfil.sucursal_id || sucursales[0]?.id || '');
       })
       .catch((e) => setError(e.message));
   }, [session]);
+
+  // Un cajero con sucursal fija (perfil.sucursal_id) NUNCA puede cambiarla
+  // — así no hay forma de cobrar por error en otra sucursal. Sólo admin/
+  // manager sin sucursal fija pueden, y se les pide confirmar cada vez
+  // porque es una acción poco frecuente y con consecuencias (factura mal
+  // emitida en la sucursal equivocada).
+  function cambiarSucursalActiva(nuevoId) {
+    const nombre = sucursales.find((s) => s.id === nuevoId)?.nombre ?? '';
+    if (!window.confirm(`¿Cambiar a "${nombre}"? Vas a facturar ahí hasta que la cambies de nuevo.`)) return;
+    setSucursalActivaId(nuevoId);
+  }
+
+  const colorActivo = useMemo(() => colorSucursal(sucursalActivaId), [sucursalActivaId]);
+  const sucursalActiva = sucursales.find((s) => s.id === sucursalActivaId);
 
   if (error) {
     return (
@@ -116,11 +141,36 @@ function PantallaApp({ session, onSalir }) {
   const pantallasVisibles = PANTALLAS.filter((p) => p.roles.includes(perfil.rol));
   const actual = pantallasVisibles.find((p) => p.id === pantallaActiva) ?? pantallasVisibles[0];
   const Componente = actual.Componente;
+  const puedeCambiarSucursal = !perfil.sucursal_id && sucursales.length > 1;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ '--color-sucursal': colorActivo }}>
       <nav className="nav">
         <span className="marca">Italo Facturación</span>
+
+        {sucursalActiva && (
+          <div className="nav-sucursal" title="Sucursal activa">
+            <span className="nav-sucursal-punto" />
+            {puedeCambiarSucursal ? (
+              <select
+                className="nav-sucursal-select"
+                value={sucursalActivaId}
+                disabled={carritoOcupado}
+                title={carritoOcupado ? 'Termina o descarta la orden en curso para cambiar de sucursal' : undefined}
+                onChange={(e) => cambiarSucursalActiva(e.target.value)}
+              >
+                {sucursales.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="nav-sucursal-nombre">{sucursalActiva.nombre}</span>
+            )}
+          </div>
+        )}
+
         {pantallasVisibles.map((p) => (
           <button
             key={p.id}
@@ -143,6 +193,9 @@ function PantallaApp({ session, onSalir }) {
           onIrA={irA}
           filtroInicial={actual.id === 'facturas' ? filtroFacturas : null}
           onFiltroInicialUsado={() => setFiltroFacturas(null)}
+          sucursalId={sucursalActivaId}
+          onCambiarSucursalId={setSucursalActivaId}
+          onCarritoOcupado={setCarritoOcupado}
         />
       </div>
     </div>
