@@ -4,7 +4,54 @@ import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 const fmtL = (n) => `L ${Number(n).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const FORM_VACIO = { codigo: '', codigo_barras: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' };
+// Código de barras editable directo en la tabla: se escribe a mano (o se
+// escanea) y se guarda con Enter o al salir del campo, sin abrir la edición
+// completa del producto. Vacío = quitar el código.
+function CeldaCodigoBarras({ producto, onGuardar }) {
+  const original = producto.codigo_barras ?? '';
+  const [valor, setValor] = useState(original);
+  const [estado, setEstado] = useState('');
+
+  useEffect(() => {
+    setValor(producto.codigo_barras ?? '');
+  }, [producto.codigo_barras]);
+
+  async function guardar() {
+    if (valor.trim() === original) return;
+    setEstado('guardando');
+    const ok = await onGuardar(producto, valor);
+    if (ok) {
+      setEstado('ok');
+      setTimeout(() => setEstado(''), 1500);
+    } else {
+      setEstado('');
+      setValor(original);
+    }
+  }
+
+  return (
+    <span className="celda-codigo-barras">
+      <input
+        value={valor}
+        placeholder="Agregar…"
+        inputMode="numeric"
+        onChange={(e) => setValor(e.target.value)}
+        onBlur={guardar}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === 'Escape') setValor(original);
+        }}
+      />
+      {estado === 'guardando' && <span className="celda-estado">…</span>}
+      {estado === 'ok' && <span className="celda-estado ok">✓</span>}
+    </span>
+  );
+}
+
+const FORM_VACIO ={ codigo: '', codigo_barras: '', nombre: '', categoria_id: '', precio: '', impuesto1_tasa: '0.15' };
 
 export default function Catalogo({ session }) {
   const [categorias, setCategorias] = useState([]);
@@ -133,6 +180,18 @@ export default function Catalogo({ session }) {
     }
   }
 
+  async function guardarCodigoBarras(producto, valor) {
+    setError('');
+    try {
+      await api.put(`/productos/${producto.id}`, session, { codigo_barras: valor.trim() });
+      await cargar();
+      return true;
+    } catch (e) {
+      setError(e.message);
+      return false;
+    }
+  }
+
   async function alternarActivo(producto) {
     if (producto.activo) await api.del(`/productos/${producto.id}`, session);
     else await api.put(`/productos/${producto.id}`, session, { activo: true });
@@ -200,7 +259,7 @@ export default function Catalogo({ session }) {
         <div className="toolbar">
           <input placeholder="Código" value={form.codigo} onChange={(e) => setForm({ ...form, codigo: e.target.value })} />
           <input
-            placeholder="Código de barras (escanéalo aquí)"
+            placeholder="Código de barras (escríbelo o escanéalo)"
             value={form.codigo_barras}
             onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })}
             onKeyDown={(e) => {
@@ -284,7 +343,9 @@ export default function Catalogo({ session }) {
             {productosVisibles.map((p) => (
               <tr key={p.id}>
                 <td>{p.codigo}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.9em', color: 'var(--text-dim)' }}>{p.codigo_barras ?? '—'}</td>
+                <td>
+                  <CeldaCodigoBarras producto={p} onGuardar={guardarCodigoBarras} />
+                </td>
                 <td>{p.nombre}</td>
                 <td>{p.categorias?.nombre ?? '—'}</td>
                 <td>{fmtL(p.precio)}</td>

@@ -651,6 +651,41 @@ table.tabla tbody tr:hover {
   margin-top: 10px;
 }
 
+/* ── Código de barras editable en la tabla del catálogo ──────────────── */
+
+.celda-codigo-barras {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.celda-codigo-barras input {
+  width: 150px;
+  margin: 0;
+  padding: 5px 8px;
+  font-family: monospace;
+  font-size: 0.9em;
+  background: transparent;
+  border-color: transparent;
+}
+
+.celda-codigo-barras input:hover {
+  border-color: var(--border);
+}
+
+.celda-codigo-barras input:focus {
+  background: var(--navy);
+}
+
+.celda-estado {
+  font-size: 0.85em;
+  color: var(--text-dim);
+}
+
+.celda-estado.ok {
+  color: #3ecf8e;
+}
+
 /* ── Conversión cotización → factura ─────────────────────────────────── */
 
 .resumen-conversion {
