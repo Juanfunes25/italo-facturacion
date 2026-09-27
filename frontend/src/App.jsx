@@ -71,6 +71,15 @@ function PantallaApp({ session, onSalir }) {
   const [sucursales, setSucursales] = useState([]);
   const [error, setError] = useState('');
   const [pantallaActiva, setPantallaActiva] = useState('pos');
+  const [filtroFacturas, setFiltroFacturas] = useState(null);
+
+  // "Ver facturas" desde Clientes (y similares) navegan a otra pantalla
+  // llevando un filtro ya armado, en vez de que el cajero tenga que
+  // volver a escribirlo.
+  function irA(id, payload) {
+    if (id === 'facturas' && payload) setFiltroFacturas(payload);
+    setPantallaActiva(id);
+  }
 
   function recargarSucursales() {
     api.get('/sucursales', session).then(setSucursales).catch((e) => setError(e.message));
@@ -131,7 +140,9 @@ function PantallaApp({ session, onSalir }) {
           perfil={perfil}
           sucursales={sucursales}
           onCreada={recargarSucursales}
-          onIrA={setPantallaActiva}
+          onIrA={irA}
+          filtroInicial={actual.id === 'facturas' ? filtroFacturas : null}
+          onFiltroInicialUsado={() => setFiltroFacturas(null)}
         />
       </div>
     </div>

@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { descargarCsv } from '../lib/csv.js';
 
 const VACIO = { nombre: '', rtn: '', direccion: '', telefono: '', email: '', exento_impuestos: false };
 
-export default function Clientes({ session }) {
+export default function Clientes({ session, onIrA }) {
   const [busqueda, setBusqueda] = useState('');
   const [clientes, setClientes] = useState([]);
   const [form, setForm] = useState(VACIO);
   const [editandoId, setEditandoId] = useState(null);
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+
+  function exportarCsv() {
+    descargarCsv(`clientes-${new Date().toISOString().slice(0, 10)}.csv`, clientes, [
+      { titulo: 'Nombre', valor: (c) => c.nombre },
+      { titulo: 'RTN', valor: (c) => c.rtn ?? '' },
+      { titulo: 'Dirección', valor: (c) => c.direccion ?? '' },
+      { titulo: 'Teléfono', valor: (c) => c.telefono ?? '' },
+      { titulo: 'Correo', valor: (c) => c.email ?? '' },
+      { titulo: 'Exento', valor: (c) => (c.exento_impuestos ? 'Sí' : 'No') },
+    ]);
+  }
 
   async function cargar() {
     setClientes(await api.get(`/clientes?q=${encodeURIComponent(busqueda)}`, session));
@@ -32,6 +45,7 @@ export default function Clientes({ session }) {
 
   async function guardar() {
     setError('');
+    setGuardando(true);
     try {
       if (editandoId) await api.put(`/clientes/${editandoId}`, session, form);
       else await api.post('/clientes', session, form);
@@ -40,6 +54,8 @@ export default function Clientes({ session }) {
       cargar();
     } catch (e) {
       setError(e.message);
+    } finally {
+      setGuardando(false);
     }
   }
 
@@ -71,8 +87,8 @@ export default function Clientes({ session }) {
             />
             Exento de impuestos
           </label>
-          <button className="boton-sm" disabled={!form.nombre} onClick={guardar}>
-            {editandoId ? 'Guardar' : 'Agregar'}
+          <button className="boton-sm" disabled={guardando || !form.nombre} onClick={guardar}>
+            {guardando ? 'Guardando…' : editandoId ? 'Guardar' : 'Agregar'}
           </button>
           {editandoId && (
             <button
@@ -91,7 +107,14 @@ export default function Clientes({ session }) {
       <div className="panel">
         <h2>Clientes</h2>
         <div className="toolbar">
-          <input placeholder="Buscar por nombre o RTN…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          <input
+            placeholder="Buscar por nombre, RTN, teléfono o correo…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <button className="boton-sm boton-secundario" onClick={exportarCsv} disabled={clientes.length === 0}>
+            Exportar CSV
+          </button>
         </div>
         <table className="tabla">
           <thead>
@@ -110,12 +133,15 @@ export default function Clientes({ session }) {
                 <td>{c.rtn ?? '—'}</td>
                 <td>{c.telefono ?? '—'}</td>
                 <td>{c.exento_impuestos ? 'Sí' : 'No'}</td>
-                <td>
+                <td style={{ whiteSpace: 'nowrap' }}>
                   {!c.es_consumidor_final && (
                     <button className="boton-sm boton-secundario" onClick={() => editar(c)}>
                       Editar
                     </button>
-                  )}
+                  )}{' '}
+                  <button className="boton-sm boton-secundario" onClick={() => onIrA?.('facturas', { q: c.nombre })}>
+                    Ver facturas
+                  </button>
                 </td>
               </tr>
             ))}

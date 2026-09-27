@@ -36,6 +36,35 @@ reportes.get('/ventas', async (req, res) => {
   }
 });
 
+// Top de productos vendidos en el rango — mismo criterio que el Dashboard,
+// pero con los filtros propios de Reportes (útil para el contador/dueño sin
+// tener que ir a otra pantalla).
+reportes.get('/productos', async (req, res) => {
+  try {
+    const ventasDb = await ventasPagadasEnRango(req.query);
+    const ventaIds = ventasDb.map((v) => v.id);
+    if (ventaIds.length === 0) return res.json([]);
+    const { data: detalle, error } = await db
+      .from('detalle_venta')
+      .select('cantidad, monto, productos(nombre)')
+      .in('venta_id', ventaIds);
+    if (error) throw new Error(error.message);
+
+    const porProducto = new Map();
+    for (const d of detalle) {
+      const nombre = d.productos?.nombre ?? 'Producto eliminado';
+      const acc = porProducto.get(nombre) || { nombre, cantidad: 0, total: 0 };
+      acc.cantidad += Number(d.cantidad);
+      acc.total = round2(acc.total + Number(d.monto));
+      porProducto.set(nombre, acc);
+    }
+    const top = [...porProducto.values()].sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
+    res.json(top);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // Base para la declaración mensual del ISV: desglose exento/exonerado/gravado.
 // No sustituye la revisión del contador — no neteamos notas de crédito
 // parciales ni compras (crédito fiscal), sólo las ventas emitidas.

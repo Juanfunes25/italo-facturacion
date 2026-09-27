@@ -31,7 +31,12 @@ productos.post('/', requireRole('admin', 'manager'), async (req, res) => {
     })
     .select()
     .single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ error: `Ya existe un producto con el código "${codigo}" — usa uno distinto.` });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   res.status(201).json(data);
 });
 

@@ -4,10 +4,16 @@ import { requireRole } from '../middleware/requireRole.js';
 
 export const usuarios = Router();
 
+// El correo vive en Supabase Auth, no en la tabla perfiles — se combina acá
+// para que Juan pueda ver a quién le está restableciendo la contraseña sin
+// tener que adivinar por el nombre.
 usuarios.get('/', requireRole('admin'), async (req, res) => {
   const { data, error } = await db.from('perfiles').select('*, sucursales(nombre)').order('nombre');
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+
+  const { data: authData } = await db.auth.admin.listUsers({ perPage: 200 });
+  const correoPorId = new Map((authData?.users ?? []).map((u) => [u.id, u.email]));
+  res.json(data.map((u) => ({ ...u, email: correoPorId.get(u.id) ?? null })));
 });
 
 // Crea el usuario en Supabase Auth y su perfil en un solo paso — así Juan no

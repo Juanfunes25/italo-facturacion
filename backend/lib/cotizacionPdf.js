@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PassThrough } from 'node:stream';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FUENTES = path.join(__dirname, '..', 'assets', 'fonts');
@@ -176,4 +177,18 @@ export function generarPdfCotizacion(cotizacion, res) {
     });
 
   doc.end();
+}
+
+// Igual que generarPdfCotizacion pero devuelve el PDF como Buffer en
+// memoria, para poder adjuntarlo a un correo en vez de escribirlo directo
+// a una respuesta HTTP.
+export function generarPdfCotizacionBuffer(cotizacion) {
+  return new Promise((resolve, reject) => {
+    const stream = new PassThrough();
+    const partes = [];
+    stream.on('data', (chunk) => partes.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(partes)));
+    stream.on('error', reject);
+    generarPdfCotizacion(cotizacion, stream);
+  });
 }

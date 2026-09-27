@@ -3,23 +3,31 @@ import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 import { descargarCsv } from '../lib/csv.js';
 
-export default function Facturas({ session, perfil, sucursales }) {
-  const [filtros, setFiltros] = useState({ sucursal_id: '', fechaInicio: '', fechaFin: '', q: '' });
+export default function Facturas({ session, perfil, sucursales, filtroInicial, onFiltroInicialUsado }) {
+  const [filtros, setFiltros] = useState({ sucursal_id: '', fechaInicio: '', fechaFin: '', q: filtroInicial?.q ?? '' });
   const [cajeroFiltro, setCajeroFiltro] = useState('');
+  const [soloAnuladas, setSoloAnuladas] = useState(false);
   const [facturas, setFacturas] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
   const [error, setError] = useState('');
   const [motivoAnulacion, setMotivoAnulacion] = useState('');
   const [montoAnulacion, setMontoAnulacion] = useState('');
   const [notasCredito, setNotasCredito] = useState([]);
+  const [reenviando, setReenviando] = useState(false);
 
   const cajerosDisponibles = useMemo(
     () => [...new Set(facturas.map((f) => f.perfiles?.nombre).filter(Boolean))].sort(),
     [facturas]
   );
-  const facturasVisibles = useMemo(
-    () => (cajeroFiltro ? facturas.filter((f) => f.perfiles?.nombre === cajeroFiltro) : facturas),
-    [facturas, cajeroFiltro]
+  const facturasVisibles = useMemo(() => {
+    let lista = facturas;
+    if (cajeroFiltro) lista = lista.filter((f) => f.perfiles?.nombre === cajeroFiltro);
+    if (soloAnuladas) lista = lista.filter((f) => f.anulada);
+    return lista;
+  }, [facturas, cajeroFiltro, soloAnuladas]);
+  const totalVisible = useMemo(
+    () => facturasVisibles.reduce((s, f) => s + (f.anulada ? 0 : Number(f.total)), 0),
+    [facturasVisibles]
   );
 
   function exportarCsv() {
@@ -51,7 +59,23 @@ export default function Facturas({ session, perfil, sucursales }) {
 
   useEffect(() => {
     buscar().catch((e) => setError(e.message));
+    if (filtroInicial) onFiltroInicialUsado?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function reenviarCorreo(id) {
+    setReenviando(true);
+    setError('');
+    try {
+      await api.post(`/ventas/${id}/reenviar-correo`, session, {});
+      window.alert('Correo reenviado.');
+      buscar();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setReenviando(false);
+    }
+  }
 
   async function verDetalle(id) {
     const detalle = await api.get(`/ventas/${id}`, session);
@@ -109,7 +133,27 @@ export default function Facturas({ session, perfil, sucursales }) {
           <button className="boton-sm boton-secundario" onClick={exportarCsv} disabled={facturasVisibles.length === 0}>
             Exportar CSV
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-dim)' }}>
+            <input
+              type="checkbox"
+              style={{ width: 'auto' }}
+              checked={soloAnuladas}
+              onChange={(e) => setSoloAnuladas(e.target.checked)}
+            />
+            Sólo anuladas
+          </label>
         </div>
+
+        {facturas.length >= 200 && (
+          <div className="alerta">
+            Se están mostrando los últimos 200 resultados — acota el rango de fechas o la sucursal para ver el resto.
+          </div>
+        )}
+
+        <p style={{ color: 'var(--text-dim)' }}>
+          {facturasVisibles.length} factura{facturasVisibles.length === 1 ? '' : 's'} · Total: L{' '}
+          {totalVisible.toFixed(2)}
+        </p>
 
         <table className="tabla">
           <thead>
@@ -203,6 +247,16 @@ export default function Facturas({ session, perfil, sucursales }) {
                 PDF
               </a>
             </div>
+            {seleccionada.clientes?.email && (
+              <button
+                className="boton-secundario boton-sm"
+                style={{ width: '100%', marginBottom: 10 }}
+                disabled={reenviando}
+                onClick={() => reenviarCorreo(seleccionada.id)}
+              >
+                {reenviando ? 'Enviando…' : `Reenviar correo a ${seleccionada.clientes.email}`}
+              </button>
+            )}
 
             {notasCredito.length > 0 && (
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 10 }}>

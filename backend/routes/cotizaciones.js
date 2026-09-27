@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
-import { generarPdfCotizacion } from '../lib/cotizacionPdf.js';
+import { generarPdfCotizacion, generarPdfCotizacionBuffer } from '../lib/cotizacionPdf.js';
+import { enviarCotizacionCliente } from '../lib/correo.js';
 
 export const cotizaciones = Router();
 
@@ -97,4 +98,21 @@ cotizaciones.get('/:id/pdf', async (req, res) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="cotizacion-evento-${data.numero}.pdf"`);
   generarPdfCotizacion({ ...data, total: calcularTotal(data) }, res);
+});
+
+cotizaciones.post('/:id/enviar', async (req, res) => {
+  try {
+    const { data, error } = await db.from('cotizaciones_eventos').select('*').eq('id', req.params.id).single();
+    if (error || !data) return res.status(404).json({ error: 'Cotización no encontrada' });
+    const cotizacionCompleta = { ...data, total: calcularTotal(data) };
+    const pdfBuffer = await generarPdfCotizacionBuffer(cotizacionCompleta);
+    const resultado = await enviarCotizacionCliente(cotizacionCompleta, pdfBuffer, data.email_cliente);
+    if (!resultado.enviado) return res.status(400).json({ error: resultado.motivo });
+    if (data.estado === 'borrador') {
+      await db.from('cotizaciones_eventos').update({ estado: 'enviada' }).eq('id', req.params.id);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });

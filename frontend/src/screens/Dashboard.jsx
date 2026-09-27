@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { BarraHorizontal, BarrasVerticales, Leyenda } from '../components/Graficas.jsx';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 import { ATAJOS_FECHA } from '../lib/rangosFecha.js';
+import { descargarCsv } from '../lib/csv.js';
 
 const COLOR_FORMA_PAGO = { Efectivo: 'var(--serie-1)', Tarjeta: 'var(--serie-2)', Transferencia: 'var(--serie-3)' };
 
@@ -111,7 +112,22 @@ export default function Dashboard({ session, sucursales }) {
           </div>
 
           <div className="panel">
-            <h2>Por sucursal</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Por sucursal</h2>
+              <button
+                className="boton-sm boton-secundario"
+                onClick={() =>
+                  descargarCsv(`ventas-por-sucursal-${filtros.fechaInicio}-a-${filtros.fechaFin || 'hoy'}.csv`, datos.por_sucursal, [
+                    { titulo: 'Sucursal', valor: (s) => s.nombre },
+                    { titulo: 'Facturas', valor: (s) => s.facturas },
+                    { titulo: 'Total', valor: (s) => Number(s.total).toFixed(2) },
+                    { titulo: 'Ticket promedio', valor: (s) => Number(s.ticket_promedio).toFixed(2) },
+                  ])
+                }
+              >
+                Exportar CSV
+              </button>
+            </div>
             <Leyenda
               items={datos.por_sucursal.map((s) => ({
                 nombre: s.nombre,
@@ -136,13 +152,23 @@ export default function Dashboard({ session, sucursales }) {
                 </tr>
               </thead>
               <tbody>
-                {datos.por_sucursal.map((s) => (
-                  <tr key={s.sucursal_id}>
-                    <td>{s.nombre}</td>
-                    <td>{s.facturas}</td>
-                    <td>{fmtL(s.ticket_promedio)}</td>
-                  </tr>
-                ))}
+                {(() => {
+                  const mejorTicket = Math.max(...datos.por_sucursal.map((s) => s.ticket_promedio));
+                  return datos.por_sucursal.map((s) => (
+                    <tr key={s.sucursal_id}>
+                      <td>{s.nombre}</td>
+                      <td>{s.facturas}</td>
+                      <td>
+                        {fmtL(s.ticket_promedio)}
+                        {datos.por_sucursal.length > 1 && s.ticket_promedio === mejorTicket && mejorTicket > 0 && (
+                          <span className="chip" style={{ marginLeft: 8, fontSize: '0.75em', color: '#7ee787', borderColor: '#7ee787' }}>
+                            Mejor ticket
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ));
+                })()}
               </tbody>
             </table>
           </div>

@@ -7,6 +7,8 @@ export default function Sucursales({ session, sucursales, onCreada }) {
   const [error, setError] = useState('');
   const [ultimaCreada, setUltimaCreada] = useState(null);
   const [estadosCai, setEstadosCai] = useState([]);
+  const [editandoId, setEditandoId] = useState(null);
+  const [formEdicion, setFormEdicion] = useState({ nombre: '', direccion: '' });
 
   useEffect(() => {
     api
@@ -31,6 +33,38 @@ export default function Sucursales({ session, sucursales, onCreada }) {
     }
   }
 
+  function editar(s) {
+    setEditandoId(s.id);
+    setFormEdicion({ nombre: s.nombre, direccion: s.direccion });
+  }
+
+  async function guardarEdicion() {
+    setError('');
+    try {
+      await api.put(`/sucursales/${editandoId}`, session, { ...formEdicion, activo: true });
+      setEditandoId(null);
+      onCreada?.();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function desactivar(s) {
+    if (
+      !window.confirm(
+        `¿Desactivar "${s.nombre}"? Deja de aparecer para facturar y en los selectores del sistema. No borra sus facturas ni su historial.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.put(`/sucursales/${s.id}`, session, { nombre: s.nombre, direccion: s.direccion, activo: false });
+      onCreada?.();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
     <div>
       {error && <div className="error">{error}</div>}
@@ -43,11 +77,42 @@ export default function Sucursales({ session, sucursales, onCreada }) {
               <th>Alias</th>
               <th>Dirección</th>
               <th>CAI</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {sucursales.map((s) => {
               const estado = estadoCaiDe(s.id);
+              if (editandoId === s.id) {
+                return (
+                  <tr key={s.id}>
+                    <td>
+                      <input
+                        style={{ marginBottom: 0 }}
+                        value={formEdicion.nombre}
+                        onChange={(e) => setFormEdicion({ ...formEdicion, nombre: e.target.value })}
+                      />
+                    </td>
+                    <td>{s.alias}</td>
+                    <td>
+                      <input
+                        style={{ marginBottom: 0 }}
+                        value={formEdicion.direccion}
+                        onChange={(e) => setFormEdicion({ ...formEdicion, direccion: e.target.value })}
+                      />
+                    </td>
+                    <td></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="boton-sm" onClick={guardarEdicion}>
+                        Guardar
+                      </button>{' '}
+                      <button className="boton-sm boton-secundario" onClick={() => setEditandoId(null)}>
+                        Cancelar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
               return (
                 <tr key={s.id}>
                   <td>
@@ -71,6 +136,14 @@ export default function Sucursales({ session, sucursales, onCreada }) {
                         Por vencer/agotarse
                       </span>
                     )}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="boton-sm boton-secundario" onClick={() => editar(s)}>
+                      Editar
+                    </button>{' '}
+                    <button className="boton-sm boton-secundario" onClick={() => desactivar(s)}>
+                      Desactivar
+                    </button>
                   </td>
                 </tr>
               );

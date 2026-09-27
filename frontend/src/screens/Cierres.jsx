@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
+import { descargarCsv } from '../lib/csv.js';
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 16);
@@ -21,12 +22,46 @@ export default function Cierres({ session, perfil, sucursales }) {
   const [historial, setHistorial] = useState([]);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [detalleCierre, setDetalleCierre] = useState(null);
+  const [facturasDetalle, setFacturasDetalle] = useState([]);
 
   const puedeVerHistorial = perfil.rol !== 'cajero';
 
   async function cargarHistorial() {
     if (!puedeVerHistorial) return;
     setHistorial(await api.get('/cierres', session));
+  }
+
+  async function verDetalleCierre(c) {
+    setDetalleCierre(c);
+    try {
+      // Las fechas de un cierre son timestamptz completos (con zona horaria,
+      // ej. "+00:00") — hay que codificarlas, si no el "+" se pierde y el
+      // rango llega mal al backend.
+      const params = new URLSearchParams({
+        estado: 'pagada',
+        sucursal_id: c.sucursal_id,
+        fechaInicio: c.fecha_inicio,
+        fechaFin: c.fecha_fin,
+      });
+      const facturas = await api.get(`/ventas?${params.toString()}`, session);
+      setFacturasDetalle(facturas);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function exportarHistorialCsv() {
+    descargarCsv(`cierres-${new Date().toISOString().slice(0, 10)}.csv`, historial, [
+      { titulo: 'Fecha', valor: (c) => new Date(c.fecha_fin).toLocaleDateString('es-HN') },
+      { titulo: 'Sucursal', valor: (c) => c.sucursales?.nombre ?? '' },
+      { titulo: 'Cajero', valor: (c) => c.cajero?.nombre ?? '' },
+      { titulo: 'De factura', valor: (c) => c.factura_desde ?? '' },
+      { titulo: 'A factura', valor: (c) => c.factura_hasta ?? '' },
+      { titulo: 'Esperado', valor: (c) => Number(c.total_esperado).toFixed(2) },
+      { titulo: 'Contado', valor: (c) => Number(c.total_contado).toFixed(2) },
+      { titulo: 'Diferencia', valor: (c) => Number(c.diferencia).toFixed(2) },
+    ]);
   }
 
   useEffect(() => {
@@ -137,6 +172,13 @@ export default function Cierres({ session, perfil, sucursales }) {
                 {Number(resultado.diferencia).toFixed(2)}
               </>
             )}
+            {(Number(resultado.propinas) > 0 || Number(resultado.descuentos) > 0) && (
+              <>
+                {' '}
+                · Propinas: L {Number(resultado.propinas).toFixed(2)} · Descuentos: L{' '}
+                {Number(resultado.descuentos).toFixed(2)}
+              </>
+            )}
             {resultado.desglose_pagos?.length > 0 && (
               <div style={{ marginTop: 6 }}>
                 {resultado.desglose_pagos.map((p) => (
@@ -152,7 +194,12 @@ export default function Cierres({ session, perfil, sucursales }) {
 
       {puedeVerHistorial && (
         <div className="panel">
-          <h2>Historial de cierres</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Historial de cierres</h2>
+            <button className="boton-sm boton-secundario" onClick={exportarHistorialCsv} disabled={historial.length === 0}>
+              Exportar CSV
+            </button>
+          </div>
           <table className="tabla">
             <thead>
               <tr>
@@ -165,6 +212,7 @@ export default function Cierres({ session, perfil, sucursales }) {
                 <th>Contado</th>
                 <th>Diferencia</th>
                 <th>Formas de pago</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -190,10 +238,38 @@ export default function Cierres({ session, perfil, sucursales }) {
                     {(c.desglose_pagos ?? []).map((p) => `${p.nombre}: L${Number(p.monto).toFixed(0)}`).join(' · ') ||
                       '—'}
                   </td>
+                  <td>
+                    <button className="boton-sm boton-secundario" onClick={() => verDetalleCierre(c)}>
+                      Ver detalle
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {detalleCierre && (
+        <div className="overlay" onClick={() => setDetalleCierre(null)}>
+          <div className="tarjeta" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <h2>Facturas del cierre</h2>
+            <p style={{ color: 'var(--text-dim)' }}>
+              {detalleCierre.sucursales?.nombre} · {new Date(detalleCierre.fecha_fin).toLocaleDateString('es-HN')}
+            </p>
+            {facturasDetalle.length === 0 && <p style={{ color: 'var(--text-dim)' }}>Sin facturas en este rango.</p>}
+            {facturasDetalle.map((f) => (
+              <div key={f.id} className="pos-orden-linea" style={f.anulada ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}>
+                <span>
+                  {f.numero_factura} · {f.clientes?.nombre ?? 'Consumidor Final'}
+                </span>
+                <span>L {Number(f.total).toFixed(2)}</span>
+              </div>
+            ))}
+            <button className="boton-secundario" style={{ marginTop: 10 }} onClick={() => setDetalleCierre(null)}>
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
     </div>

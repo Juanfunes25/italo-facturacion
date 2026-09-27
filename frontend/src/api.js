@@ -1,12 +1,19 @@
 async function llamar(method, path, session, body) {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // fetch falla por completo (sin internet, servidor caído) antes de
+    // llegar a responder — sin esto se veía "Failed to fetch" en inglés.
+    throw new Error('Sin conexión con el servidor. Revisa el internet e intenta de nuevo.');
+  }
   const texto = await res.text();
   const datos = texto ? JSON.parse(texto) : null;
   if (!res.ok) throw new Error(datos?.error || `Error ${res.status}`);

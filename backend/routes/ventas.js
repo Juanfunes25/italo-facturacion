@@ -159,11 +159,43 @@ ventas.get('/', async (req, res) => {
   if (sucursal_id) query = query.eq('sucursal_id', sucursal_id);
   if (fechaInicio) query = query.gte('fecha_emision', fechaInicio);
   if (fechaFin) query = query.lte('fecha_emision', fechaFin);
-  if (q) query = query.or(`numero_factura.ilike.%${q}%`);
+  if (q) {
+    // Además del No. de factura, busca por nombre del cliente — así no hay
+    // que saber el número exacto para encontrar las facturas de alguien.
+    const { data: clientesQueCoinciden } = await db.from('clientes').select('id').ilike('nombre', `%${q}%`);
+    const idsCliente = (clientesQueCoinciden ?? []).map((c) => c.id);
+    const filtroCliente = idsCliente.length > 0 ? `,cliente_id.in.(${idsCliente.join(',')})` : '';
+    query = query.or(`numero_factura.ilike.%${q}%${filtroCliente}`);
+  }
 
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// Reenvía manualmente el correo de una factura ya emitida — para cuando
+// falló la primera vez, o cuando el cliente pide que se le vuelva a mandar.
+ventas.post('/:id/reenviar-correo', async (req, res) => {
+  try {
+    const ventaCompleta = await obtenerVentaCompleta(req.params.id);
+    if (!ventaCompleta) return res.status(404).json({ error: 'Factura no encontrada' });
+    if (ventaCompleta.estado !== 'pagada') {
+      return res.status(409).json({ error: 'Sólo se puede enviar por correo una factura ya emitida' });
+    }
+    if (!ventaCompleta.clientes?.email) {
+      return res.status(400).json({ error: 'El cliente de esta factura no tiene correo registrado' });
+    }
+    const pdfBuffer = await generarPdfFacturaBuffer(ventaCompleta);
+    const resultado = await enviarFacturaCliente(ventaCompleta, pdfBuffer);
+    await db
+      .from('ventas')
+      .update({ correo_enviado: resultado.enviado, correo_error: resultado.motivo ?? null })
+      .eq('id', ventaCompleta.id);
+    if (!resultado.enviado) return res.status(400).json({ error: resultado.motivo });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 export async function obtenerVentaCompleta(id) {

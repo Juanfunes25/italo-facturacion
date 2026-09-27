@@ -44,6 +44,33 @@ export async function enviarResumenCierre(cierre, sucursalNombre) {
   }
 }
 
+// Manda la cotización de evento en PDF al correo del cliente — a pedido
+// (botón "Enviar por correo"), no automático como la factura.
+export async function enviarCotizacionCliente(cotizacion, pdfBuffer, destinatario) {
+  if (!transportadorDisponible()) return { enviado: false, motivo: 'GMAIL_USER/GMAIL_APP_PASSWORD no configurados' };
+  if (!destinatario) return { enviado: false, motivo: 'El cliente no tiene correo registrado' };
+
+  const asunto = `Cotización de evento — ${cotizacion.nombre_evento} — Italo Gelateria`;
+  const cuerpo = `
+    <p>Hola ${cotizacion.nombre_cliente ?? ''},</p>
+    <p>Adjunto va la cotización para "${cotizacion.nombre_evento}". Cualquier duda, quedamos atentos.</p>
+    <p>Total: L ${Number(cotizacion.total).toFixed(2)}</p>
+  `;
+
+  try {
+    await crearTransportador().sendMail({
+      from: process.env.GMAIL_USER,
+      to: destinatario,
+      subject: asunto,
+      html: cuerpo,
+      attachments: [{ filename: `cotizacion-evento-${cotizacion.numero}.pdf`, content: pdfBuffer }],
+    });
+    return { enviado: true };
+  } catch (e) {
+    return { enviado: false, motivo: e.message };
+  }
+}
+
 // Manda la factura en PDF al correo del cliente apenas se cobra (si el
 // cliente tiene correo registrado). Igual que el resumen de cierre: no-op
 // si no hay credenciales, nunca bloquea el cobro.

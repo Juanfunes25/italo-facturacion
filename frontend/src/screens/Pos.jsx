@@ -522,7 +522,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
   // de una lista. "Más formas de pago" (dividir el pago, o efectivo con
   // cambio) queda como opción secundaria para el caso raro.
   function pagoInstantaneo(forma) {
-    if (guardandoPago || carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn) return;
+    if (guardandoPago || carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || totales.total < 0) return;
     confirmarPago({
       pagos: [{ forma, monto: totales.total.toFixed(2) }],
       efectivo: forma === 'efectivo' ? totales.total : 0,
@@ -678,11 +678,25 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
       <div className="pos-panel">
         <input
           ref={buscadorRef}
-          placeholder="Buscar producto por nombre o código…"
+          placeholder="Buscar producto por nombre o código… (Enter agrega el primero)"
           value={busquedaProducto}
+          onKeyDown={(e) => {
+            // Enter agrega el primer producto visible — evita soltar el
+            // teclado para agarrar el mouse cuando el cajero ya escribió
+            // el código o nombre exacto.
+            if (e.key === 'Enter' && productosVisibles.length > 0) {
+              agregarProducto(productosVisibles[0]);
+              setBusquedaProducto('');
+            }
+          }}
           onChange={(e) => setBusquedaProducto(e.target.value)}
         />
         {cargandoCatalogo && <p style={{ color: 'var(--text-dim)' }}>Cargando catálogo…</p>}
+        {!cargandoCatalogo && (
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85em', marginTop: -6 }}>
+            {productosVisibles.length} producto{productosVisibles.length === 1 ? '' : 's'}
+          </p>
+        )}
         <div className="pos-productos">
           {productosVisibles.map((p) => (
             <button key={p.id} className="pos-producto" onClick={() => agregarProducto(p)}>
@@ -755,7 +769,9 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
               <span>
                 {l.nombre}
                 <br />
-                <span style={{ color: 'var(--text-dim)' }}>{fmtL(l.precio_unitario)} c/u</span>
+                <span style={{ color: 'var(--text-dim)' }}>
+                  {fmtL(l.precio_unitario)} c/u · {fmtL(l.precio_unitario * l.cantidad)}
+                </span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button className="boton-secundario" onClick={() => cambiarCantidad(l.producto_id, -1)}>
@@ -785,7 +801,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
             placeholder="Descuento (L)"
             value={descuento}
             onChange={(e) => setDescuento(e.target.value)}
-            style={{ marginBottom: 0, flex: 1 }}
+            style={{ marginBottom: 0, flex: 1, borderColor: totales.total < 0 ? '#ff8080' : undefined }}
           />
           <select
             value={copias}
@@ -797,6 +813,11 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
             <option value={2}>2 copias</option>
           </select>
         </div>
+        {totales.total < 0 && (
+          <p style={{ color: '#ff8080', fontSize: '0.82em', marginTop: -6 }}>
+            El descuento es mayor al subtotal — el total no puede quedar negativo. Ajusta el descuento.
+          </p>
+        )}
         <input
           placeholder="Nota interna (no sale en la factura)"
           value={notaInterna}
@@ -853,7 +874,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
           }}
         >
           <button
-            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago}
+            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
             onClick={() => pagoInstantaneo('efectivo')}
             style={{
               background: '#19703c',
@@ -867,7 +888,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
             EFECTIVO
           </button>
           <button
-            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago}
+            disabled={carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || totales.total < 0}
             onClick={() => pagoInstantaneo('tarjeta')}
             style={{
               background: '#2a6fb0',

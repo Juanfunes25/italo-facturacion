@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 
 const VACIO = {
@@ -30,11 +30,32 @@ function calcularTotal(f) {
   return Number.isFinite(total) ? total : 0;
 }
 
+// Evento dentro de los próximos 7 días que todavía no se confirmó — vale la
+// pena que salte a la vista para dar seguimiento antes de que sea tarde.
+function eventoProximo(c) {
+  if (!c.fecha_evento || !['borrador', 'enviada'].includes(c.estado)) return false;
+  const dias = (new Date(`${c.fecha_evento}T00:00:00`) - new Date()) / 86400000;
+  return dias >= 0 && dias <= 7;
+}
+
 export default function Cotizaciones({ session }) {
   const [cotizaciones, setCotizaciones] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
   const [form, setForm] = useState(VACIO);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [enviandoId, setEnviandoId] = useState(null);
+
+  const cotizacionesVisibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return cotizaciones.filter((c) => {
+      const coincideTexto =
+        !q || c.nombre_cliente.toLowerCase().includes(q) || c.nombre_evento.toLowerCase().includes(q);
+      const coincideEstado = !estadoFiltro || c.estado === estadoFiltro;
+      return coincideTexto && coincideEstado;
+    });
+  }, [cotizaciones, busqueda, estadoFiltro]);
 
   async function cargar() {
     setCotizaciones(await api.get('/cotizaciones', session));
@@ -43,6 +64,20 @@ export default function Cotizaciones({ session }) {
   useEffect(() => {
     cargar().catch((e) => setError(e.message));
   }, []);
+
+  async function enviarPorCorreo(c) {
+    setEnviandoId(c.id);
+    setError('');
+    try {
+      await api.post(`/cotizaciones/${c.id}/enviar`, session, {});
+      window.alert(`Cotización enviada a ${c.email_cliente}.`);
+      cargar();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setEnviandoId(null);
+    }
+  }
 
   async function crear() {
     setError('');
@@ -172,6 +207,21 @@ export default function Cotizaciones({ session }) {
 
       <div className="panel">
         <h2>Cotizaciones</h2>
+        <div className="toolbar">
+          <input
+            placeholder="Buscar por cliente o evento…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+          <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+            <option value="">Todos los estados</option>
+            {Object.entries(ETIQUETA_ESTADO).map(([valor, etiqueta]) => (
+              <option key={valor} value={valor}>
+                {etiqueta}
+              </option>
+            ))}
+          </select>
+        </div>
         <table className="tabla">
           <thead>
             <tr>
@@ -185,12 +235,19 @@ export default function Cotizaciones({ session }) {
             </tr>
           </thead>
           <tbody>
-            {cotizaciones.map((c) => (
+            {cotizacionesVisibles.map((c) => (
               <tr key={c.id}>
                 <td>{String(c.numero).padStart(4, '0')}</td>
                 <td>{c.nombre_cliente}</td>
                 <td>{c.nombre_evento}</td>
-                <td>{c.fecha_evento ?? '—'}</td>
+                <td>
+                  {c.fecha_evento ?? '—'}
+                  {eventoProximo(c) && (
+                    <span className="chip" style={{ marginLeft: 6, fontSize: '0.75em', color: '#ffb86b', borderColor: '#ffb86b' }}>
+                      Evento próximo
+                    </span>
+                  )}
+                </td>
                 <td>L {Number(c.total).toFixed(2)}</td>
                 <td>
                   <select value={c.estado} onChange={(e) => cambiarEstado(c, e.target.value)} style={{ marginBottom: 0 }}>
@@ -211,6 +268,15 @@ export default function Cotizaciones({ session }) {
                   >
                     PDF
                   </a>{' '}
+                  {c.email_cliente && (
+                    <button
+                      className="boton-sm boton-secundario"
+                      disabled={enviandoId === c.id}
+                      onClick={() => enviarPorCorreo(c)}
+                    >
+                      {enviandoId === c.id ? 'Enviando…' : 'Enviar por correo'}
+                    </button>
+                  )}{' '}
                   {c.estado === 'borrador' && (
                     <button className="boton-sm boton-secundario" onClick={() => eliminar(c)}>
                       Eliminar

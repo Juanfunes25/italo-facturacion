@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 
@@ -16,9 +16,20 @@ const VACIO = {
 
 export default function Usuarios({ session, sucursales }) {
   const [usuarios, setUsuarios] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [rolFiltro, setRolFiltro] = useState('');
   const [form, setForm] = useState(VACIO);
   const [error, setError] = useState('');
   const [creando, setCreando] = useState(false);
+
+  const usuariosVisibles = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    return usuarios.filter((u) => {
+      const coincideTexto = !q || u.nombre.toLowerCase().includes(q) || (u.email ?? '').toLowerCase().includes(q);
+      const coincideRol = !rolFiltro || u.rol === rolFiltro;
+      return coincideTexto && coincideRol;
+    });
+  }, [usuarios, busqueda, rolFiltro]);
 
   async function cargar() {
     setUsuarios(await api.get('/usuarios', session));
@@ -43,6 +54,11 @@ export default function Usuarios({ session, sucursales }) {
   }
 
   async function actualizar(u, cambios) {
+    if (cambios.activo === false) {
+      if (!window.confirm(`¿Desactivar a ${u.nombre}? No va a poder entrar al sistema hasta que lo vuelvas a activar.`)) {
+        return;
+      }
+    }
     await api.put(`/usuarios/${u.id}`, session, { ...u, ...cambios, sucursal_id: u.sucursal_id ?? null });
     cargar();
   }
@@ -122,10 +138,20 @@ export default function Usuarios({ session, sucursales }) {
 
       <div className="panel">
         <h2>Usuarios</h2>
+        <div className="toolbar">
+          <input placeholder="Buscar por nombre o correo…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+          <select value={rolFiltro} onChange={(e) => setRolFiltro(e.target.value)}>
+            <option value="">Todos los roles</option>
+            <option value="cajero">Cajero</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </div>
         <table className="tabla">
           <thead>
             <tr>
               <th>Nombre</th>
+              <th>Correo</th>
               <th>Rol</th>
               <th>Sucursal</th>
               <th>Cierre ciego</th>
@@ -134,9 +160,10 @@ export default function Usuarios({ session, sucursales }) {
             </tr>
           </thead>
           <tbody>
-            {usuarios.map((u) => (
+            {usuariosVisibles.map((u) => (
               <tr key={u.id}>
                 <td>{u.nombre}</td>
+                <td style={{ color: 'var(--text-dim)', fontSize: '0.9em' }}>{u.email ?? '—'}</td>
                 <td>{u.rol}</td>
                 <td>
                   {u.sucursal_id && (
