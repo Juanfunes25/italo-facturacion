@@ -266,6 +266,20 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
   const primerCambio = useRef(true);
   const ultimaVentaRef = useRef(null);
   const buscadorRef = useRef(null);
+  // El id de la orden abierta se lee de una ref (no del estado) porque el
+  // autoguardado corre en un setTimeout: si se leyera del estado, dos
+  // agregados rápidos podían disparar dos autoguardados que todavía no
+  // se habían enterado uno del otro, y cada uno creaba su propia orden
+  // "abierta" en vez de ir sumando a la misma (el bug reportado: una
+  // orden abierta por cada producto en vez de una sola por venta).
+  const ventaIdRef = useRef(null);
+  const colaGuardadoRef = useRef(Promise.resolve());
+  const descartadaRef = useRef(false);
+
+  function fijarVentaId(id) {
+    ventaIdRef.current = id;
+    setVentaId(id);
+  }
 
   useEffect(() => {
     setCargandoCatalogo(true);
@@ -347,9 +361,10 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
       return;
     }
     if (carrito.length === 0) return;
+    descartadaRef.current = false;
     const t = setTimeout(() => {
-      guardarOrden().catch(() => {
-        setTimeout(() => guardarOrden().catch(() => {}), 2000);
+      guardarOrdenEnCola().catch(() => {
+        setTimeout(() => guardarOrdenEnCola().catch(() => {}), 2000);
       });
     }, 700);
     return () => clearTimeout(t);
@@ -368,20 +383,33 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
         descuento: 0,
       })),
     };
+    if (body.items.length === 0) return ventaIdRef.current;
     try {
-      if (ventaId) {
-        await api.put(`/ventas/${ventaId}`, session, body);
+      if (ventaIdRef.current) {
+        await api.put(`/ventas/${ventaIdRef.current}`, session, body);
         setError('');
-        return ventaId;
+        return ventaIdRef.current;
       }
       const venta = await api.post('/ventas', session, body);
-      setVentaId(venta.id);
+      fijarVentaId(venta.id);
       setError('');
       return venta.id;
     } catch (e) {
       setError(e.message);
       throw e;
     }
+  }
+
+  // Encola cada autoguardado en serie: nunca deja que dos corran a la vez.
+  // Así el segundo siempre ve el id que dejó el primero (via ventaIdRef) y
+  // actualiza la misma orden en vez de crear una nueva.
+  function guardarOrdenEnCola() {
+    const promesa = colaGuardadoRef.current.catch(() => {}).then(() => {
+      if (descartadaRef.current) return ventaIdRef.current;
+      return guardarOrden();
+    });
+    colaGuardadoRef.current = promesa;
+    return promesa;
   }
 
   function agregarProducto(producto) {
@@ -427,16 +455,21 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
     if (confirmar && carrito.length > 0) {
       if (!window.confirm('¿Descartar esta orden? Los productos agregados se van a perder.')) return; // #5
     }
-    if (ventaId) {
-      await api.del(`/ventas/${ventaId}`, session).catch(() => {});
-    }
+    // Marca la orden como descartada ANTES de limpiar, para que si había un
+    // autoguardado en cola (de un producto agregado justo antes de "Nueva")
+    // no la resucite después de borrada.
+    descartadaRef.current = true;
+    const idAEliminar = ventaIdRef.current;
+    fijarVentaId(null);
     setCarrito([]);
     setCliente(null);
     setDescuento('');
     setNotaInterna('');
-    setVentaId(null);
     setResultadoFactura(null);
     setError('');
+    if (idAEliminar) {
+      await api.del(`/ventas/${idAEliminar}`, session).catch(() => {});
+    }
     buscadorRef.current?.focus();
   }
 
@@ -456,7 +489,8 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
   async function recuperarOrden(orden) {
     try {
       const detalle = await api.get(`/ventas/${orden.id}`, session);
-      setVentaId(detalle.id);
+      descartadaRef.current = false;
+      fijarVentaId(detalle.id);
       setCliente(detalle.clientes?.es_consumidor_final ? null : detalle.clientes);
       setDescuento(detalle.descuento > 0 ? String(detalle.descuento) : '');
       setCarrito(
@@ -499,7 +533,13 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
     setGuardandoPago(true);
     setError('');
     try {
-      const idParaPagar = ventaId ?? (await guardarOrden());
+      // Siempre se espera la cola de autoguardado antes de cobrar — si no,
+      // un producto agregado hace menos de 700ms podía cobrarse bien en
+      // pantalla pero facturarse con el total viejo que todavía tenía el
+      // servidor (el POS ya lo mostraba correcto, pero la factura real
+      // podía quedar por debajo de lo que se cobró).
+      const idParaPagar = await guardarOrdenEnCola();
+      if (!idParaPagar) throw new Error('No se pudo guardar la orden antes de cobrar');
       const mapaFormas = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' };
       const formasPago = await api.get('/formas-pago', session);
       const pagosConId = pagos.map((p) => ({
@@ -517,7 +557,7 @@ export default function Pos({ session, perfil, sucursales, onIrA }) {
       setCliente(null);
       setDescuento('');
       setNotaInterna('');
-      setVentaId(null);
+      fijarVentaId(null);
 
       // #15 — abre el ticket listo para imprimir apenas se cobra.
       window.open(`/api/ventas/${venta.id}/ticket?autoimprimir=1&copias=${copias}`, '_blank');

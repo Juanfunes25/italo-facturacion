@@ -114,6 +114,9 @@ ventas.put('/:id', async (req, res) => {
     }
 
     const { cliente_id, tipo_orden, items, descuento, nota_interna } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'La orden necesita al menos un producto' });
+    }
     const cliente = await obtenerCliente(cliente_id);
     const puedeEditarPrecio = req.perfil.rol !== 'cajero';
     const lineas = await construirItems(items, puedeEditarPrecio);
