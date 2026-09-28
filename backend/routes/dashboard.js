@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
+import { traerPorIds, traerTodo } from '../lib/consultas.js';
+import { fechaHn, filtrarRango } from '../lib/fechas.js';
 
 export const dashboard = Router();
 
@@ -14,16 +16,18 @@ dashboard.get('/', async (req, res) => {
   try {
     const { sucursal_id, fechaInicio, fechaFin } = req.query;
 
-    let ventasQuery = db
-      .from('ventas')
-      .select('id, sucursal_id, total, isv_total, cambio, fecha_emision, sucursales(nombre, alias)')
-      .eq('estado', 'pagada')
-      .eq('anulada', false);
-    if (sucursal_id) ventasQuery = ventasQuery.eq('sucursal_id', sucursal_id);
-    if (fechaInicio) ventasQuery = ventasQuery.gte('fecha_emision', fechaInicio);
-    if (fechaFin) ventasQuery = ventasQuery.lte('fecha_emision', fechaFin);
-    const { data: ventas, error: errVentas } = await ventasQuery;
-    if (errVentas) throw new Error(errVentas.message);
+    // Fechas en hora de Honduras (fin de día incluido) y por páginas: antes
+    // se perdía el último día del rango y todo lo que pasara de 1000 facturas.
+    const ventas = await traerTodo(() => {
+      let q = db
+        .from('ventas')
+        .select('id, sucursal_id, total, isv_total, cambio, fecha_emision, sucursales(nombre, alias)')
+        .eq('estado', 'pagada')
+        .eq('anulada', false);
+      if (sucursal_id) q = q.eq('sucursal_id', sucursal_id);
+      q = filtrarRango(q, 'fecha_emision', fechaInicio, fechaFin);
+      return q.order('fecha_emision').order('id');
+    });
 
     const ventaIds = ventas.map((v) => v.id);
     const total = round2(ventas.reduce((s, v) => s + Number(v.total), 0));
@@ -34,17 +38,14 @@ dashboard.get('/', async (req, res) => {
     let pagos = [];
     let detalle = [];
     if (ventaIds.length > 0) {
-      const [{ data: pagosDb, error: errPagos }, { data: detalleDb, error: errDetalle }] = await Promise.all([
-        db.from('venta_pagos').select('venta_id, monto, formas_pago(nombre)').in('venta_id', ventaIds),
-        db
-          .from('detalle_venta')
-          .select('venta_id, cantidad, monto, productos(nombre, categorias(nombre))')
-          .in('venta_id', ventaIds),
+      [pagos, detalle] = await Promise.all([
+        traerPorIds(() => db.from('venta_pagos').select('id, venta_id, monto, formas_pago(nombre)').order('id'), 'venta_id', ventaIds),
+        traerPorIds(
+          () => db.from('detalle_venta').select('id, venta_id, cantidad, monto, productos(nombre, categorias(nombre))').order('id'),
+          'venta_id',
+          ventaIds
+        ),
       ]);
-      if (errPagos) throw new Error(errPagos.message);
-      if (errDetalle) throw new Error(errDetalle.message);
-      pagos = pagosDb;
-      detalle = detalleDb;
     }
 
     // Formas de pago
@@ -102,7 +103,7 @@ dashboard.get('/', async (req, res) => {
     // Tendencia diaria
     const porDia = new Map();
     for (const v of ventas) {
-      const dia = (v.fecha_emision || '').slice(0, 10);
+      const dia = fechaHn(v.fecha_emision);
       const acc = porDia.get(dia) || { fecha: dia, total: 0, facturas: 0 };
       acc.total = round2(acc.total + Number(v.total));
       acc.facturas += 1;

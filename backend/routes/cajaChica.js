@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { hoyHn } from '../lib/fechas.js';
 
 export const cajaChica = Router();
 
@@ -19,9 +20,13 @@ cajaChica.post('/', async (req, res) => {
   if (!sucursal_id || !tipo || monto === undefined) {
     return res.status(400).json({ error: 'sucursal_id, tipo y monto son obligatorios' });
   }
+  if (!Number.isFinite(Number(monto)) || Number(monto) <= 0) {
+    return res.status(400).json({ error: 'El monto debe ser mayor que 0' });
+  }
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(400).json({ error: 'Fecha inválida' });
   const { data, error } = await db
     .from('caja_chica')
-    .insert({ sucursal_id, tipo, monto, concepto, fecha, usuario_id: req.perfil.id })
+    .insert({ sucursal_id, tipo, monto: Number(monto), concepto, fecha: fecha || hoyHn(), usuario_id: req.perfil.id })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });

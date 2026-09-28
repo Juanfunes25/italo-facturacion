@@ -20,6 +20,7 @@ import { sucursales } from './routes/sucursales.js';
 import { dashboard } from './routes/dashboard.js';
 import { cotizaciones } from './routes/cotizaciones.js';
 import { auditoria } from './routes/auditoria.js';
+import { requireRole } from './middleware/requireRole.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -57,11 +58,13 @@ app.use('/api/ventas', ventas);
 app.use('/api/ventas', facturaImpresion); // /api/ventas/:id/ticket, /api/ventas/:id/pdf
 app.use('/api/notas-credito', notasCredito);
 app.use('/api/cierres', cierres);
-app.use('/api/reportes', reportes);
-app.use('/api/caja-chica', cajaChica);
+// Reportes, dashboard y caja chica son de gerencia: antes cualquier cajero
+// logueado podía pedir las ventas de todas las sucursales por la API.
+app.use('/api/reportes', requireRole('admin', 'manager'), reportes);
+app.use('/api/caja-chica', requireRole('admin', 'manager'), cajaChica);
 app.use('/api/usuarios', usuarios);
-app.use('/api/dashboard', dashboard);
-app.use('/api/cotizaciones', cotizaciones);
+app.use('/api/dashboard', requireRole('admin', 'manager'), dashboard);
+app.use('/api/cotizaciones', requireRole('admin', 'manager'), cotizaciones);
 app.use('/api/auditoria', auditoria);
 
 // Sirve el build del frontend (mismo patrón que italo-reposicion: un solo

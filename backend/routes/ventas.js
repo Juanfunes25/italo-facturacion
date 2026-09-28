@@ -9,12 +9,24 @@ import {
 import { generarPdfFacturaBuffer } from '../lib/pdf.js';
 import { enviarFacturaCliente } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { textoSeguroFiltro } from '../lib/consultas.js';
+import { filtrarRango } from '../lib/fechas.js';
 
 export const ventas = Router();
 
 // Monto a partir del cual se exige RTN del cliente (mismo criterio que el
 // "limiteRTN" que ya usaba WizPOS para esta empresa: L10,000).
 export const UMBRAL_RTN_OBLIGATORIO = 10000;
+
+// Sucursal fija de un cajero (null para admin/manager o cajero "flotante").
+export function sucursalDelCajero(perfil) {
+  return perfil?.rol === 'cajero' && perfil.sucursal_id ? perfil.sucursal_id : null;
+}
+
+function sucursalAjena(perfil, sucursalId) {
+  const propia = sucursalDelCajero(perfil);
+  return Boolean(propia && sucursalId && propia !== sucursalId);
+}
 
 export async function obtenerPuntoEmisionActivo(sucursal_id) {
   const { data, error } = await db
@@ -61,13 +73,21 @@ async function construirItems(itemsSolicitados, puedeEditarPrecio) {
   return itemsSolicitados.map((item) => {
     const producto = porId.get(item.producto_id);
     if (!producto) throw new Error(`Producto ${item.producto_id} no existe o está inactivo`);
+    // Una cantidad negativa o cero bajaba el total de la factura (y el ISV).
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(cantidad) || cantidad <= 0 || cantidad > 9999) {
+      throw new Error(`Cantidad inválida para ${producto.nombre}`);
+    }
     const precio_unitario =
       puedeEditarPrecio && item.precio_unitario !== undefined ? Number(item.precio_unitario) : producto.precio;
+    if (!Number.isFinite(Number(precio_unitario)) || Number(precio_unitario) < 0) {
+      throw new Error(`Precio inválido para ${producto.nombre}`);
+    }
     return {
       producto_id: producto.id,
       nombre_producto: producto.nombre,
-      cantidad: Number(item.cantidad),
-      precio_unitario,
+      cantidad,
+      precio_unitario: Number(precio_unitario),
       descuento: 0,
       impuesto_tasa: producto.impuesto1_tasa,
     };
@@ -110,6 +130,7 @@ ventas.post('/', async (req, res) => {
   try {
     const { sucursal_id, tipo_orden, items, nota_interna } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'sucursal_id es obligatorio' });
+    if (sucursalAjena(req.perfil, sucursal_id)) return res.status(403).json({ error: 'No puedes facturar en otra sucursal' });
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La orden necesita al menos un producto' });
     }
@@ -169,6 +190,7 @@ ventas.put('/:id', async (req, res) => {
       .eq('id', req.params.id)
       .single();
     if (errBusqueda || !ventaActual) return res.status(404).json({ error: 'Orden no encontrada' });
+    if (sucursalAjena(req.perfil, ventaActual.sucursal_id)) return res.status(403).json({ error: 'Esa orden es de otra sucursal' });
     if (ventaActual.estado !== 'abierta') {
       return res.status(409).json({ error: 'Sólo se pueden editar órdenes abiertas' });
     }
@@ -233,17 +255,21 @@ ventas.put('/:id', async (req, res) => {
 });
 
 ventas.get('/', async (req, res) => {
-  const { estado, sucursal_id, q, fechaInicio, fechaFin } = req.query;
+  const { estado, q: qCruda, fechaInicio, fechaFin } = req.query;
+  // Un cajero con sucursal fija sólo ve las facturas de su sucursal.
+  const sucursal_id = sucursalDelCajero(req.perfil) ?? req.query.sucursal_id;
+  const q = textoSeguroFiltro(qCruda);
   let query = db
     .from('ventas')
     .select('*, clientes(nombre, rtn), perfiles(nombre)')
     .order('created_at', { ascending: false })
-    .limit(200);
+    // Con rango de fechas (ej. detalle de un cierre de caja) se permiten más
+    // filas; sin rango, las 200 más recientes bastan para la pantalla.
+    .limit(fechaInicio && fechaFin ? 1000 : 200);
 
   if (estado) query = query.eq('estado', estado);
   if (sucursal_id) query = query.eq('sucursal_id', sucursal_id);
-  if (fechaInicio) query = query.gte('fecha_emision', fechaInicio);
-  if (fechaFin) query = query.lte('fecha_emision', fechaFin);
+  query = filtrarRango(query, 'fecha_emision', fechaInicio, fechaFin);
   if (q) {
     // Además del No. de factura, busca por nombre del cliente — así no hay
     // que saber el número exacto para encontrar las facturas de alguien.
@@ -308,13 +334,13 @@ export async function obtenerVentaCompleta(id) {
 
 ventas.get('/:id', async (req, res) => {
   const venta = await obtenerVentaCompleta(req.params.id);
-  if (!venta) return res.status(404).json({ error: 'Orden no encontrada' });
+  if (!venta || sucursalAjena(req.perfil, venta.sucursal_id)) return res.status(404).json({ error: 'Orden no encontrada' });
   res.json(venta);
 });
 
 ventas.delete('/:id', async (req, res) => {
   const venta = await obtenerVentaCompleta(req.params.id);
-  if (!venta) return res.status(404).json({ error: 'Orden no encontrada' });
+  if (!venta || sucursalAjena(req.perfil, venta.sucursal_id)) return res.status(404).json({ error: 'Orden no encontrada' });
   if (venta.estado !== 'abierta') {
     return res.status(409).json({ error: 'Sólo se pueden descartar órdenes abiertas' });
   }
@@ -352,6 +378,18 @@ export async function facturarVenta(req, ventaId, { pagos, efectivo_recibido, or
     .eq('id', ventaId)
     .single();
   if (errVenta || !venta) throw Object.assign(new Error('Orden no encontrada'), { status: 404 });
+  if (sucursalAjena(req.perfil, venta.sucursal_id)) {
+    throw Object.assign(new Error('Esa orden es de otra sucursal'), { status: 403 });
+  }
+  const { data: formasValidas } = await db.from('formas_pago').select('id');
+  const idsFormas = new Set((formasValidas ?? []).map((f) => f.id));
+  for (const p of pagos) {
+    const monto = Number(p.monto);
+    // Un monto negativo en una forma de pago inflaba otra (ej. efectivo) y
+    // descuadraba el cierre.
+    if (!Number.isFinite(monto) || monto <= 0) throw Object.assign(new Error('Cada pago debe ser mayor que 0'), { status: 400 });
+    if (!idsFormas.has(p.forma_pago_id)) throw Object.assign(new Error('Forma de pago inválida'), { status: 400 });
+  }
 
   if (Number(venta.total) > UMBRAL_RTN_OBLIGATORIO && !venta.clientes?.rtn) {
     throw Object.assign(
@@ -373,8 +411,20 @@ export async function facturarVenta(req, ventaId, { pagos, efectivo_recibido, or
   });
   if (errFinalizar) throw Object.assign(new Error(errFinalizar.message), { status: 409 });
 
-  const filasPago = pagos.map((p) => ({ venta_id: venta.id, forma_pago_id: p.forma_pago_id, monto: p.monto }));
-  await db.from('venta_pagos').insert(filasPago);
+  const filasPago = pagos.map((p) => ({ venta_id: venta.id, forma_pago_id: p.forma_pago_id, monto: round2(Number(p.monto)) }));
+  const { error: errPagos } = await db.from('venta_pagos').insert(filasPago);
+  if (errPagos) {
+    // La factura ya tiene número: no se revierte (rompería el correlativo),
+    // pero queda en la bitácora para corregir los pagos a mano.
+    console.error('venta_pagos', venta.id, errPagos.message);
+    await registrarAuditoria(req, {
+      accion: 'venta.error_pagos',
+      entidad: 'venta',
+      entidadId: venta.id,
+      sucursalId: venta.sucursal_id,
+      detalle: { numero_factura: ventaFinal.numero_factura, error: errPagos.message, pagos: filasPago },
+    });
+  }
 
   const { data: puntoEmision } = await db
     .from('puntos_emision')

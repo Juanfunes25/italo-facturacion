@@ -10,8 +10,11 @@ export const notasCredito = Router();
 // no se toca — la nota de crédito es un documento aparte que la referencia.
 notasCredito.post('/', requireRole('admin'), async (req, res) => {
   const { venta_id, motivo, monto } = req.body;
-  if (!venta_id || !motivo || monto === undefined) {
+  if (!venta_id || !String(motivo ?? '').trim() || monto === undefined) {
     return res.status(400).json({ error: 'venta_id, motivo y monto son obligatorios' });
+  }
+  if (!Number.isFinite(Number(monto)) || Number(monto) <= 0) {
+    return res.status(400).json({ error: 'El monto de la nota de crédito debe ser mayor que 0' });
   }
 
   const { data: venta, error: errVenta } = await db.from('ventas').select('*').eq('id', venta_id).single();
@@ -19,7 +22,7 @@ notasCredito.post('/', requireRole('admin'), async (req, res) => {
   if (venta.estado !== 'pagada') return res.status(409).json({ error: 'Sólo se anulan facturas ya pagadas' });
   if (venta.anulada) return res.status(409).json({ error: 'Esta factura ya está anulada' });
 
-  const { data: notasPrevias } = await db.from('notas_credito').select('monto').eq('venta_id', venta_id);
+  const { data: notasPrevias } = await db.from('notas_credito').select('monto').eq('venta_id', venta_id).neq('estado', 'anulada');
   const yaAcreditado = (notasPrevias ?? []).reduce((s, n) => s + Number(n.monto), 0);
   const restante = Number(venta.total) - yaAcreditado;
   if (Number(monto) > restante + 0.01) {

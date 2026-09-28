@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { filtrarRango } from '../lib/fechas.js';
 
 export const auditoria = Router();
 
@@ -17,8 +18,7 @@ auditoria.get('/', requireRole('admin'), async (req, res) => {
   if (usuario_id) query = query.eq('usuario_id', usuario_id);
   if (sucursal_id) query = query.eq('sucursal_id', sucursal_id);
   if (entidad_id) query = query.eq('entidad_id', entidad_id);
-  if (desde) query = query.gte('created_at', desde);
-  if (hasta) query = query.lte('created_at', `${hasta}T23:59:59.999`);
+  query = filtrarRango(query, 'created_at', desde, hasta); // días en hora de Honduras
   const { data, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
