@@ -1,34 +1,41 @@
 :root {
   color-scheme: light;
-  /* Tema claro (pedido de Juan: fondo #efddb7, más cómodo para la vista).
-     Los nombres --navy* se conservan por compatibilidad, pero ahora son:
-       --navy          fondo de la página (crema)
-       --navy-panel    tarjetas y paneles (casi blanco cálido)
+  /* Paleta "Ítalo Moderno" — derivada del BrandBook (verde salvia #C5D288,
+     verde profundo #3E5A34, negro). Los nombres --navy* se conservan por
+     compatibilidad con las reglas existentes:
+       --navy          fondo de la página
+       --navy-panel    tarjetas y paneles
        --navy-elevada  filas, chips y zonas hundidas dentro de un panel */
-  --navy: #efddb7;
-  --navy-panel: #fffaf0;
-  --navy-elevada: #f6ead0;
-  --campo: #fffdf8;
-  --terracota: #b5532f;
-  --terracota-claro: #c5603c;
-  --gold: #9a7410;
-  --text: #2a2118;
-  --text-dim: #6e604a;
-  --border: #dfcca0;
-  --color-sucursal: var(--terracota);
-  /* Texto dibujado con el color de la sucursal: un paso más oscuro para
-     que se lea sobre crema (los colores de sucursal son de relleno). */
-  --color-sucursal-texto: color-mix(in srgb, var(--color-sucursal) 62%, #1c1c18);
-  /* Texto sobre un relleno del color de sucursal / botones de color. */
-  --texto-sobre-color: #1c1c18;
+  --navy: #f2f4ee;
+  --navy-panel: #ffffff;
+  --navy-elevada: #f5f7f1;
+  --campo: #ffffff;
+  --terracota: #2f5d3a;
+  --terracota-claro: #3d7449;
+  --primario: #2f5d3a;
+  --primario-hover: #264c30;
+  --primario-suave: #e7efdc;
+  --salvia: #c5d288;
+  --gold: #8a6a12;
+  --text: #1a1f16;
+  --text-dim: #687062;
+  --border: #e3e7dc;
+  --color-sucursal: var(--primario);
+  --color-sucursal-texto: color-mix(in srgb, var(--color-sucursal) 62%, #10140e);
+  --texto-sobre-color: #10140e;
   --ok: #1d7a45;
-  --ok-fondo: #e1f1e4;
+  --ok-fondo: #e3f3e7;
   --peligro: #b3261e;
-  --peligro-fondo: #fbe3df;
-  --aviso: #7a5a06;
-  --aviso-fondo: #fbeecb;
+  --peligro-fondo: #fce7e4;
+  --aviso: #8a5a00;
+  --aviso-fondo: #fdf1d6;
   --info: #1f6096;
-  --info-fondo: #e1eef8;
+  --info-fondo: #e3eef9;
+  --sidebar: #141a12;
+  --sidebar-borde: #232b20;
+  --sidebar-texto: #b9c2af;
+  --sidebar-titulo: #6f7a66;
+  --sidebar-activo: rgba(197, 210, 136, 0.13);
 
   /* Paleta categórica del dashboard — 4 slots, orden fijo. */
   --serie-1: #c5603c; /* terracota — igual a --terracota */
@@ -36,11 +43,11 @@
   --serie-3: #b08d28; /* dorado (paso oscuro) */
   --serie-4: #6c7fd6; /* azul-violeta */
 
-  --radio: 10px;
-  --radio-chico: 7px;
-  --sombra-suave: 0 1px 2px rgba(60, 40, 10, 0.12);
-  --sombra: 0 4px 16px rgba(60, 40, 10, 0.12);
-  --sombra-flotante: 0 12px 32px rgba(60, 40, 10, 0.22);
+  --radio: 14px;
+  --radio-chico: 9px;
+  --sombra-suave: 0 1px 2px rgba(16, 24, 12, 0.06);
+  --sombra: 0 1px 2px rgba(16, 24, 12, 0.04), 0 8px 24px rgba(16, 24, 12, 0.06);
+  --sombra-flotante: 0 18px 48px rgba(16, 24, 12, 0.18);
   --veloz: 0.14s ease;
 }
 
@@ -2574,4 +2581,887 @@ table.tabla td.nowrap {
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   REDISEÑO "ÍTALO MODERNO"
+   ─────────────────────────────────────────────────────────────────────────
+   Barra lateral oscura con acentos salvia (identidad Ítalo), contenido en
+   tarjetas blancas sobre gris-salvia muy claro, verde bosque como color de
+   acción. El color de la sucursal se reserva para lo que indica
+   UBICACIÓN: tarjeta de sucursal en la barra lateral, franja superior del
+   contenido, marca de los títulos, banner del POS y pestañas activas.
+   Esta sección va al final a propósito: reemplaza reglas anteriores.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+:root[data-tema='oscuro'] {
+  color-scheme: dark;
+  --navy: #0f130e;
+  --navy-panel: #171c15;
+  --navy-elevada: #1e241b;
+  --campo: #12160f;
+  --terracota: #4f8a5c;
+  --terracota-claro: #5f9c6c;
+  --primario: #4f8a5c;
+  --primario-hover: #5f9c6c;
+  --primario-suave: rgba(197, 210, 136, 0.12);
+  --gold: #d9b554;
+  --text: #e8ede2;
+  --text-dim: #98a38e;
+  --border: #2a3226;
+  --color-sucursal-texto: color-mix(in srgb, var(--color-sucursal) 72%, #ffffff);
+  --ok: #7bd39a;
+  --ok-fondo: rgba(46, 158, 94, 0.18);
+  --peligro: #ff8a80;
+  --peligro-fondo: rgba(220, 70, 60, 0.18);
+  --aviso: #e6c65a;
+  --aviso-fondo: rgba(212, 175, 55, 0.16);
+  --info: #8ccaf0;
+  --info-fondo: rgba(61, 159, 214, 0.18);
+  --sidebar: #0b0e0a;
+  --sidebar-borde: #1c2319;
+  --sombra-suave: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sombra: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --sombra-flotante: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--navy);
+  font-size: 15px;
+  letter-spacing: -0.005em;
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Poppins', 'Inter', sans-serif;
+  text-transform: none;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  color: var(--text);
+}
+
+h2 {
+  font-size: 1.25em;
+}
+
+/* ── Estructura: barra lateral + contenido ───────────────────────────── */
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  min-height: 100vh;
+  border-left: 0;
+  background: var(--navy);
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-shell.barra-compacta {
+  grid-template-columns: 76px 1fr;
+}
+
+.principal {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 4px solid var(--color-sucursal);
+  transition: border-color 0.25s ease;
+}
+
+.contenido {
+  padding: 22px 26px 32px;
+}
+
+.barra-movil,
+.sidebar-velo {
+  display: none;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 12px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-borde);
+  color: var(--sidebar-texto);
+  overflow: hidden auto;
+  z-index: 20;
+}
+
+.sidebar-marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 4px;
+}
+
+.sidebar-marca-texto {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-marca-texto strong {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 800;
+  font-size: 1.15em;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-marca-texto small {
+  color: var(--salvia);
+  font-weight: 600;
+  font-size: 0.72em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.boton-icono {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  border: 0;
+}
+
+.boton-icono:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  filter: none;
+  box-shadow: none;
+}
+
+.sidebar-colapsar {
+  color: var(--sidebar-titulo);
+}
+
+.sidebar-sucursal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--color-sucursal);
+  color: var(--texto-sobre-color);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-sucursal) 35%, transparent);
+  transition: background-color 0.25s ease;
+}
+
+.sidebar-sucursal-etiqueta {
+  font-size: 0.66em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.sidebar-sucursal-nombre,
+.sidebar-sucursal-select {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 1.02em;
+  color: var(--texto-sobre-color);
+}
+
+.sidebar-sucursal-select {
+  width: 100%;
+  margin: 0;
+  padding: 0 18px 0 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.sidebar-sucursal-select:focus {
+  box-shadow: none;
+  outline: 2px solid var(--texto-sobre-color);
+  outline-offset: 3px;
+}
+
+.sidebar-sucursal-select option {
+  color: #1a1f16;
+  background: #fff;
+}
+
+.sidebar-sucursal-inicial {
+  display: none;
+}
+
+.sidebar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sidebar-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-grupo-titulo {
+  padding: 0 10px 4px;
+  color: var(--sidebar-titulo);
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sidebar-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--sidebar-texto);
+  font-weight: 500;
+  font-size: 0.93em;
+  text-align: left;
+  box-shadow: none;
+  border: 0;
+}
+
+.sidebar-item svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+.sidebar-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  filter: none;
+  box-shadow: none;
+}
+
+.sidebar-item:active:not(:disabled) {
+  transform: none;
+}
+
+.sidebar-item.activo {
+  background: var(--sidebar-activo);
+  color: #eef4dc;
+  font-weight: 600;
+}
+
+.sidebar-item.activo::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--salvia);
+}
+
+.sidebar-item.activo svg {
+  color: var(--salvia);
+  opacity: 1;
+}
+
+.sidebar-item-texto {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-item .nav-contador {
+  margin-left: auto;
+}
+
+.sidebar-pie {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sidebar-borde);
+}
+
+.sidebar-pie .nav-vivo {
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--sidebar-titulo);
+}
+
+.sidebar-pie .nav-vivo.conectado {
+  color: #8fd3a6;
+}
+
+.sidebar-usuario {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px 2px 8px;
+}
+
+.sidebar-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--salvia);
+  color: #141a12;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+}
+
+.sidebar-usuario-texto {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.sidebar-usuario-texto strong {
+  color: #fff;
+  font-size: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-usuario-texto small {
+  color: var(--sidebar-titulo);
+  font-size: 0.75em;
+}
+
+/* Barra compacta: sólo íconos */
+.barra-compacta .sidebar {
+  padding: 16px 10px;
+  align-items: center;
+}
+
+.barra-compacta .sidebar-marca {
+  flex-direction: column;
+  padding: 0;
+}
+
+.barra-compacta .sidebar-marca-texto,
+.barra-compacta .sidebar-item-texto,
+.barra-compacta .sidebar-grupo-titulo,
+.barra-compacta .sidebar-sucursal-etiqueta,
+.barra-compacta .sidebar-sucursal-nombre,
+.barra-compacta .sidebar-sucursal-select,
+.barra-compacta .sidebar-usuario-texto,
+.barra-compacta .nav-vivo {
+  display: none;
+}
+
+.barra-compacta .sidebar-sucursal {
+  padding: 8px;
+  width: 48px;
+  align-items: center;
+}
+
+.barra-compacta .sidebar-sucursal-inicial {
+  display: block;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 800;
+  font-size: 0.95em;
+}
+
+.barra-compacta .sidebar-item {
+  justify-content: center;
+  padding: 10px;
+  width: 48px;
+}
+
+.barra-compacta .sidebar-item .nav-contador {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  margin: 0;
+}
+
+.barra-compacta .sidebar-item.activo::before {
+  left: -10px;
+}
+
+.barra-compacta .sidebar-grupo {
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px solid var(--sidebar-borde);
+}
+
+.barra-compacta .sidebar-grupo:first-child {
+  border-top: 0;
+}
+
+.barra-compacta .sidebar-usuario {
+  flex-direction: column;
+  padding: 6px 0 0;
+}
+
+/* Tablet / celular: la barra lateral se vuelve menú deslizable */
+@media (max-width: 900px) {
+  .app-shell,
+  .app-shell.barra-compacta {
+    grid-template-columns: 1fr;
+  }
+  .barra-movil {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--sidebar);
+    color: #fff;
+    border-bottom: 3px solid var(--color-sucursal);
+  }
+  .barra-movil-titulo {
+    flex: 1;
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+  }
+  .barra-movil-sucursal {
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--color-sucursal);
+    color: var(--texto-sobre-color);
+    font-weight: 700;
+    font-size: 0.8em;
+  }
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 272px;
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    box-shadow: var(--sombra-flotante);
+  }
+  .menu-abierto .sidebar {
+    transform: none;
+  }
+  .sidebar-velo {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    background: rgba(10, 14, 9, 0.45);
+  }
+  .principal {
+    border-top: 0;
+  }
+  .contenido {
+    padding: 14px;
+  }
+  .barra-compacta .sidebar-item-texto,
+  .barra-compacta .sidebar-grupo-titulo,
+  .barra-compacta .sidebar-marca-texto {
+    display: initial;
+  }
+}
+
+/* ── Superficies ─────────────────────────────────────────────────────── */
+
+.panel,
+.pos-panel,
+.kpi-tile,
+.rep-kpi {
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-radius: var(--radio);
+  box-shadow: var(--sombra);
+}
+
+.panel h2,
+.overlay .tarjeta h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+/* Marca de sucursal en cada título: indica dónde se está trabajando sin
+   pintar todo el texto. */
+.panel h2::before,
+.overlay .tarjeta h2::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 1.05em;
+  border-radius: 4px;
+  background: var(--color-sucursal);
+}
+
+.overlay {
+  background: rgba(14, 20, 12, 0.45);
+  backdrop-filter: blur(3px);
+}
+
+.overlay .tarjeta,
+.tarjeta {
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--sombra-flotante);
+}
+
+/* ── Controles ───────────────────────────────────────────────────────── */
+
+button {
+  border-radius: 10px;
+  background: var(--primario);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+/* Hover genérico sin cambiar el color de fondo: así los botones con color
+   propio (Efectivo, Tarjeta, categorías, chips) no se vuelven verdes. */
+button:hover:not(:disabled) {
+  filter: brightness(0.94);
+  box-shadow: 0 4px 14px rgba(16, 24, 12, 0.12);
+}
+
+.boton-secundario {
+  background: var(--navy-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--sombra-suave);
+}
+
+.boton-secundario:hover:not(:disabled) {
+  background: var(--navy-elevada);
+  border-color: color-mix(in srgb, var(--primario) 45%, var(--border));
+  box-shadow: var(--sombra-suave);
+}
+
+.boton-peligro {
+  background: var(--peligro);
+}
+
+.boton-peligro:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--peligro) 85%, #000);
+}
+
+input,
+textarea,
+select {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--campo);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: color-mix(in srgb, var(--primario) 30%, var(--border));
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--primario);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primario) 16%, transparent);
+}
+
+:focus-visible {
+  outline-color: var(--primario);
+}
+
+/* ── Tablas ──────────────────────────────────────────────────────────── */
+
+table.tabla th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.72em;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  background: var(--navy-elevada);
+}
+
+table.tabla th:first-child {
+  border-top-left-radius: 10px;
+}
+
+table.tabla th:last-child {
+  border-top-right-radius: 10px;
+}
+
+table.tabla td {
+  border-bottom: 1px solid var(--border);
+}
+
+table.tabla tbody tr:hover {
+  background: color-mix(in srgb, var(--primario) 4%, transparent);
+}
+
+/* ── Chips y avisos ──────────────────────────────────────────────────── */
+
+.alerta {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--aviso) 30%, transparent);
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+}
+
+.error {
+  border-radius: 12px;
+  background: var(--peligro-fondo);
+  border: 1px solid color-mix(in srgb, var(--peligro) 30%, transparent);
+  color: var(--peligro);
+}
+
+.aviso-ok {
+  border-radius: 12px;
+}
+
+/* ── POS ─────────────────────────────────────────────────────────────── */
+
+.pos-grid {
+  height: calc(100vh - 58px);
+  gap: 16px;
+}
+
+.pos-categoria {
+  border-radius: 10px;
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.pos-categoria.activa {
+  background: var(--color-sucursal);
+  border-color: var(--color-sucursal);
+  color: var(--texto-sobre-color);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-sucursal) 30%, transparent);
+}
+
+.pos-producto {
+  border-radius: 14px;
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: var(--sombra-suave);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.pos-producto:hover:not(:disabled) {
+  background: var(--navy-panel);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-sucursal) 60%, var(--border));
+  box-shadow: 0 10px 22px rgba(16, 24, 12, 0.1);
+}
+
+.pos-producto strong {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+}
+
+.pos-sucursal-banner {
+  border-radius: 14px;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-sucursal) 28%, transparent);
+}
+
+.pos-sucursal-banner-corto {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.pos-totales-fila.total span:last-child {
+  color: var(--primario);
+  font-family: 'Poppins', sans-serif;
+}
+
+.pos-chip-desc.activo {
+  background: var(--primario);
+  border-color: var(--primario);
+  color: #fff;
+}
+
+.pos-linea-con-descuento {
+  background: var(--primario-suave);
+}
+
+/* ── Reportes, cierres, KPIs ─────────────────────────────────────────── */
+
+.rep-pestanas {
+  border-radius: 12px;
+  background: var(--navy-panel);
+  box-shadow: var(--sombra-suave);
+}
+
+.rep-pestanas button {
+  border-radius: 9px;
+}
+
+.rep-pestanas button:hover:not(:disabled) {
+  background: var(--navy-elevada);
+  box-shadow: none;
+}
+
+.rep-pestanas button.activa,
+.rep-pestanas button.activa:hover {
+  background: var(--primario);
+  color: #fff;
+}
+
+.rep-kpi {
+  border-top: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.rep-kpi::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--salvia);
+}
+
+.rep-kpi-valor,
+.cierre-kpis strong,
+.cierre-fila-fuerte span:last-child {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cierre-bloque h3,
+.rep-fiscal h3 {
+  font-family: 'Poppins', sans-serif;
+  text-transform: none;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.cierre-boton {
+  background: var(--primario);
+  color: #fff;
+}
+
+.cierre-kpis > div,
+.cierre-fila {
+  border-radius: 10px;
+}
+
+/* ── Pantalla de inicio de sesión ────────────────────────────────────── */
+
+.pantalla {
+  background:
+    radial-gradient(900px 500px at 12% 10%, rgba(197, 210, 136, 0.22), transparent 60%),
+    radial-gradient(700px 500px at 90% 90%, rgba(62, 90, 52, 0.35), transparent 60%),
+    #0f140d;
+}
+
+.pantalla .tarjeta {
+  max-width: 400px;
+  padding: 34px 32px;
+}
+
+.login-marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.login-marca strong {
+  display: block;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 800;
+  font-size: 1.6em;
+  letter-spacing: 0.02em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.login-marca small {
+  color: var(--primario);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  font-size: 0.72em;
+  text-transform: uppercase;
+}
+
+.pantalla .tarjeta h1 {
+  display: none;
+}
+
+/* Scrollbar */
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-dim) 35%, transparent);
+}
+
+/* Ajustes finos del rediseño */
+.cierre-campo-input input,
+.cierre-campo-input input:hover,
+.cierre-campo-input input:focus {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  margin: 0;
+}
+
+.cierre-campo-input:focus-within {
+  border-color: var(--primario);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primario) 16%, transparent);
+}
+
+.cierre-sucursal-punto {
+  display: none;
+}
+
+.cierre-fila span:last-child,
+.rep-num,
+.pos-totales-fila span:last-child {
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  gap: 10px;
+}
+
+.sidebar-item {
+  padding: 7px 10px;
+}
+
+@media (max-height: 820px) {
+  .sidebar {
+    gap: 10px;
+    padding-top: 12px;
+  }
+  .sidebar-item {
+    padding: 6px 10px;
+    font-size: 0.9em;
+  }
+  .sidebar-grupo-titulo {
+    padding-bottom: 2px;
+  }
 }

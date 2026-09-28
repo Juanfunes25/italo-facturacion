@@ -17,6 +17,7 @@ import Cotizaciones from './screens/Cotizaciones.jsx';
 import Impresora from './screens/Impresora.jsx';
 import Bitacora from './screens/Bitacora.jsx';
 import { useConexionEnVivo } from './lib/tiempoReal.js';
+import Icono, { IsotipoItalo } from './components/Icono.jsx';
 import { accesoAEmail, claveInterna } from './lib/acceso.js';
 import { useActualizacion } from './lib/actualizacion.js';
 import { fijarSesionEventos, registrarEvento } from './lib/eventos.js';
@@ -48,6 +49,15 @@ function PantallaLogin({ onEntrar }) {
   return (
     <div className="pantalla">
       <form className="tarjeta" onSubmit={entrar}>
+        <div className="login-marca">
+          <span style={{ background: '#141a12', borderRadius: 14, padding: 9, display: 'inline-flex' }}>
+            <IsotipoItalo tam={34} color="#C5D288" />
+          </span>
+          <span>
+            <strong>ITALO</strong>
+            <small>Facturación</small>
+          </span>
+        </div>
         <h1>Italo Facturación</h1>
         {error && <div className="error">{error}</div>}
         <input
@@ -74,22 +84,49 @@ function PantallaLogin({ onEntrar }) {
 }
 
 const PANTALLAS = [
-  { id: 'dashboard', etiqueta: 'Dashboard', roles: ['admin', 'manager'], Componente: Dashboard },
-  { id: 'pos', etiqueta: 'Facturación', roles: ['admin', 'manager', 'cajero'], Componente: Pos },
-  { id: 'facturas', etiqueta: 'Facturas', roles: ['admin', 'manager', 'cajero'], Componente: Facturas },
-  { id: 'cotizaciones', etiqueta: 'Cotización de Eventos', roles: ['admin', 'manager'], Componente: Cotizaciones },
-  { id: 'cierres', etiqueta: 'Cierre de caja', roles: ['admin', 'manager', 'cajero'], Componente: Cierres },
-  { id: 'catalogo', etiqueta: 'Catálogo', roles: ['admin', 'manager'], Componente: Catalogo },
-  { id: 'clientes', etiqueta: 'Clientes', roles: ['admin', 'manager'], Componente: Clientes },
-  { id: 'reportes', etiqueta: 'Reportes', roles: ['admin', 'manager'], Componente: Reportes },
-  { id: 'caja-chica', etiqueta: 'Caja chica', roles: ['admin', 'manager'], Componente: CajaChica },
-  { id: 'puntos-emision', etiqueta: 'CAI / Puntos de emisión', roles: ['admin', 'manager'], Componente: PuntosEmision },
-  { id: 'usuarios', etiqueta: 'Usuarios', roles: ['admin'], Componente: Usuarios },
-  { id: 'sucursales', etiqueta: 'Sucursales', roles: ['admin'], Componente: Sucursales },
-  { id: 'antifraude', etiqueta: 'Antifraude', roles: ['admin'], Componente: Antifraude },
-  { id: 'bitacora', etiqueta: 'Bitácora', roles: ['admin'], Componente: Bitacora },
-  { id: 'impresora', etiqueta: 'Impresora', roles: ['admin', 'manager', 'cajero'], Componente: Impresora },
+  { id: 'pos', etiqueta: 'Facturación', grupo: 'Operación', roles: ['admin', 'manager', 'cajero'], Componente: Pos },
+  { id: 'facturas', etiqueta: 'Facturas', grupo: 'Operación', roles: ['admin', 'manager', 'cajero'], Componente: Facturas },
+  { id: 'cierres', etiqueta: 'Cierre de caja', grupo: 'Operación', roles: ['admin', 'manager', 'cajero'], Componente: Cierres },
+  { id: 'cotizaciones', etiqueta: 'Cotización de eventos', grupo: 'Operación', roles: ['admin', 'manager'], Componente: Cotizaciones },
+  { id: 'dashboard', etiqueta: 'Dashboard', grupo: 'Negocio', roles: ['admin', 'manager'], Componente: Dashboard },
+  { id: 'reportes', etiqueta: 'Reportes', grupo: 'Negocio', roles: ['admin', 'manager'], Componente: Reportes },
+  { id: 'catalogo', etiqueta: 'Catálogo', grupo: 'Negocio', roles: ['admin', 'manager'], Componente: Catalogo },
+  { id: 'clientes', etiqueta: 'Clientes', grupo: 'Negocio', roles: ['admin', 'manager'], Componente: Clientes },
+  { id: 'caja-chica', etiqueta: 'Caja chica', grupo: 'Negocio', roles: ['admin', 'manager'], Componente: CajaChica },
+  { id: 'antifraude', etiqueta: 'Antifraude', grupo: 'Control', roles: ['admin'], Componente: Antifraude },
+  { id: 'bitacora', etiqueta: 'Bitácora', grupo: 'Control', roles: ['admin'], Componente: Bitacora },
+  { id: 'puntos-emision', etiqueta: 'CAI / Emisión', grupo: 'Control', roles: ['admin', 'manager'], Componente: PuntosEmision },
+  { id: 'usuarios', etiqueta: 'Usuarios', grupo: 'Control', roles: ['admin'], Componente: Usuarios },
+  { id: 'sucursales', etiqueta: 'Sucursales', grupo: 'Control', roles: ['admin'], Componente: Sucursales },
+  { id: 'impresora', etiqueta: 'Impresora', grupo: 'Ajustes', roles: ['admin', 'manager', 'cajero'], Componente: Impresora },
 ];
+
+const GRUPOS = ['Operación', 'Negocio', 'Control', 'Ajustes'];
+
+// Preferencias visuales por computadora (tema y barra lateral compacta).
+function leerPreferencia(clave, porDefecto) {
+  try {
+    return localStorage.getItem(`italo-facturacion:${clave}`) ?? porDefecto;
+  } catch {
+    return porDefecto;
+  }
+}
+
+function guardarPreferencia(clave, valor) {
+  try {
+    localStorage.setItem(`italo-facturacion:${clave}`, valor);
+  } catch {
+    // modo privado: no se recuerda
+  }
+}
+
+function aplicarTema(tema) {
+  document.documentElement.dataset.tema = tema;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', tema === 'oscuro' ? '#0f130e' : '#141a12');
+}
+aplicarTema(leerPreferencia('tema', 'claro'));
+
 
 function IndicadorVivo() {
   const conectado = useConexionEnVivo();
@@ -123,6 +160,23 @@ function PantallaApp({ session, onSalir }) {
   // cambiar de sucursal a medio cobro y mezclar la venta con el punto de
   // emisión de otra sucursal.
   const [carritoOcupado, setCarritoOcupado] = useState(false);
+  const [tema, setTema] = useState(() => leerPreferencia('tema', 'claro'));
+  const [compacta, setCompacta] = useState(() => leerPreferencia('barra-compacta', window.innerWidth < 1500 ? '1' : '0') === '1');
+  const [menuMovil, setMenuMovil] = useState(false);
+
+  function cambiarTema() {
+    const nuevo = tema === 'oscuro' ? 'claro' : 'oscuro';
+    setTema(nuevo);
+    aplicarTema(nuevo);
+    guardarPreferencia('tema', nuevo);
+  }
+
+  function alternarCompacta() {
+    setCompacta((c) => {
+      guardarPreferencia('barra-compacta', c ? '0' : '1');
+      return !c;
+    });
+  }
   const { hayNueva, actualizarAhora } = useActualizacion(carritoOcupado);
 
   // "Ver facturas" desde Clientes (y similares) navegan a otra pantalla
@@ -220,9 +274,7 @@ function PantallaApp({ session, onSalir }) {
   useEffect(() => {
     const corto = nombreCortoSucursal(sucursalActiva?.nombre);
     document.title = corto ? `${corto} · Italo Facturación` : 'Italo Facturación';
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta && colorActivo.startsWith('#')) meta.setAttribute('content', colorActivo);
-  }, [sucursalActiva?.nombre, colorActivo]);
+  }, [sucursalActiva?.nombre]);
 
   if (error) {
     return (
@@ -249,19 +301,36 @@ function PantallaApp({ session, onSalir }) {
   const puedeCambiarSucursal = !perfil.sucursal_id && sucursales.length > 1;
 
   return (
-    <div className="app-shell" style={{ '--color-sucursal': colorActivo }}>
-      <nav className="nav">
-        <span className="marca">Italo Facturación</span>
+    <div className={`app-shell${compacta ? ' barra-compacta' : ''}${menuMovil ? ' menu-abierto' : ''}`} style={{ '--color-sucursal': colorActivo }}>
+      <header className="barra-movil">
+        <button className="boton-icono" onClick={() => setMenuMovil(true)} aria-label="Abrir menú">
+          <Icono nombre="menu" />
+        </button>
+        <span className="barra-movil-titulo">{actual.etiqueta}</span>
+        {sucursalActiva && <span className="barra-movil-sucursal">{nombreCortoSucursal(sucursalActiva.nombre)}</span>}
+      </header>
+      {menuMovil && <div className="sidebar-velo" onClick={() => setMenuMovil(false)} />}
+      <aside className="sidebar">
+        <div className="sidebar-marca">
+          <IsotipoItalo tam={28} color="#C5D288" />
+          <span className="sidebar-marca-texto">
+            <strong>ITALO</strong>
+            <small>Facturación</small>
+          </span>
+          <button className="boton-icono sidebar-colapsar" onClick={alternarCompacta} title={compacta ? 'Expandir menú' : 'Compactar menú'}>
+            <Icono nombre={compacta ? 'expandir' : 'colapsar'} tam={18} />
+          </button>
+        </div>
 
         {sucursalActiva && (
-          <div className="nav-sucursal" title="Sucursal activa">
-            <span className="nav-sucursal-punto" />
+          <div className="sidebar-sucursal" title={sucursalActiva.nombre}>
+            <span className="sidebar-sucursal-etiqueta">Sucursal</span>
             {puedeCambiarSucursal ? (
               <select
-                className="nav-sucursal-select"
+                className="sidebar-sucursal-select"
                 value={sucursalActivaId}
                 disabled={carritoOcupado}
-                title={carritoOcupado ? 'Termina o descarta la orden en curso para cambiar de sucursal' : undefined}
+                title={carritoOcupado ? 'Termina o descarta la orden en curso para cambiar de sucursal' : 'Cambiar sucursal'}
                 onChange={(e) => cambiarSucursalActiva(e.target.value)}
               >
                 {sucursales.map((s) => (
@@ -271,30 +340,60 @@ function PantallaApp({ session, onSalir }) {
                 ))}
               </select>
             ) : (
-              <span className="nav-sucursal-nombre">{nombreCortoSucursal(sucursalActiva.nombre)}</span>
+              <strong className="sidebar-sucursal-nombre">{nombreCortoSucursal(sucursalActiva.nombre)}</strong>
             )}
+            <span className="sidebar-sucursal-inicial" aria-hidden="true">
+              {nombreCortoSucursal(sucursalActiva.nombre).slice(0, 2).toUpperCase()}
+            </span>
           </div>
         )}
 
-        {pantallasVisibles.map((p) => (
-          <button
-            key={p.id}
-            className={pantallaActiva === p.id ? 'activo' : ''}
-            onClick={() => setPantallaActiva(p.id)}
-          >
-            {p.etiqueta}
-            {p.id === 'antifraude' && alertasPendientes > 0 && <span className="nav-contador">{alertasPendientes}</span>}
+        <nav className="sidebar-nav">
+          {GRUPOS.map((grupo) => {
+            const items = pantallasVisibles.filter((p) => p.grupo === grupo);
+            if (items.length === 0) return null;
+            return (
+              <div key={grupo} className="sidebar-grupo">
+                <span className="sidebar-grupo-titulo">{grupo}</span>
+                {items.map((p) => (
+                  <button
+                    key={p.id}
+                    className={`sidebar-item${actual.id === p.id ? ' activo' : ''}`}
+                    onClick={() => {
+                      setPantallaActiva(p.id);
+                      setMenuMovil(false);
+                    }}
+                    title={compacta ? p.etiqueta : undefined}
+                  >
+                    <Icono nombre={p.id} />
+                    <span className="sidebar-item-texto">{p.etiqueta}</span>
+                    {p.id === 'antifraude' && alertasPendientes > 0 && <span className="nav-contador">{alertasPendientes}</span>}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className="sidebar-pie">
+          <IndicadorVivo />
+          <button className="sidebar-item" onClick={cambiarTema} title={tema === 'oscuro' ? 'Modo claro' : 'Modo noche'}>
+            <Icono nombre={tema === 'oscuro' ? 'sol' : 'luna'} />
+            <span className="sidebar-item-texto">{tema === 'oscuro' ? 'Modo claro' : 'Modo noche'}</span>
           </button>
-        ))}
-        <IndicadorVivo />
-        <button
-          className="salir"
-          onClick={salir}
-          title={`Versión ${new Date(__VERSION__).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`}
-        >
-          {perfil.nombre} · Salir
-        </button>
-      </nav>
+          <div className="sidebar-usuario" title={`Versión ${new Date(__VERSION__).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`}>
+            <span className="sidebar-avatar">{(perfil.nombre ?? '?').trim().slice(0, 1).toUpperCase()}</span>
+            <span className="sidebar-usuario-texto">
+              <strong>{perfil.nombre}</strong>
+              <small>{{ admin: 'Administrador', manager: 'Manager', cajero: 'Cajero' }[perfil.rol] ?? perfil.rol}</small>
+            </span>
+            <button className="boton-icono" onClick={salir} title="Cerrar sesión" aria-label="Cerrar sesión">
+              <Icono nombre="salir" tam={18} />
+            </button>
+          </div>
+        </div>
+      </aside>
+      <main className="principal">
       {hayNueva && (
         <div className="aviso-version">
           Hay una versión nueva del sistema. Se instalará sola al terminar esta venta.
@@ -317,6 +416,7 @@ function PantallaApp({ session, onSalir }) {
           onCarritoOcupado={setCarritoOcupado}
         />
       </div>
+      </main>
     </div>
   );
 }
