@@ -3761,3 +3761,711 @@ table.tabla tbody tr:hover {
   overflow-y: auto;
   min-height: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Calendario de eventos (Cotizaciones → Calendario)
+   ═══════════════════════════════════════════════════════════════════════ */
+.cal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .cal-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cal-barra {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-nav h2 {
+  margin: 0 6px;
+  min-width: 170px;
+  text-align: center;
+}
+
+.cal-nav button {
+  width: auto;
+  min-width: 36px;
+}
+
+.cal-filtros {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cal-filtros select {
+  width: auto;
+  margin: 0;
+}
+
+.cal-toggle,
+.cal-realizado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88em;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cal-toggle input,
+.cal-realizado input {
+  width: auto;
+  margin: 0;
+}
+
+.cal-realizado {
+  color: var(--text);
+  font-weight: 600;
+  margin: 4px 0 12px;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cal-grid-cabecera {
+  margin-bottom: 4px;
+}
+
+.cal-grid-cabecera div {
+  text-align: center;
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 4px 0;
+}
+
+.cal-celda {
+  min-height: 104px;
+  padding: 6px;
+  border-radius: var(--radio-chico);
+  background: var(--navy-elevada);
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: pointer;
+  transition: border-color var(--veloz), background var(--veloz);
+  min-width: 0;
+}
+
+.cal-celda:hover {
+  border-color: var(--border);
+  background: var(--navy-panel);
+}
+
+.cal-celda.fuera {
+  opacity: 0.45;
+}
+
+.cal-celda.pasada .cal-dia {
+  color: var(--text-dim);
+}
+
+.cal-celda.seleccionada {
+  border-color: var(--primario);
+  background: var(--navy-panel);
+  box-shadow: var(--sombra-suave);
+}
+
+.cal-celda-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cal-dia {
+  font-weight: 700;
+  font-size: 0.85em;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.cal-celda.hoy .cal-dia {
+  background: var(--primario);
+  color: #fff;
+}
+
+.cal-multiple {
+  font-size: 0.68em;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+}
+
+.cal-pill {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 0.72em;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 3px 6px;
+  margin: 0;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.cal-pill.confirmado {
+  background: color-mix(in srgb, var(--c-evento) 18%, var(--navy-panel));
+  color: var(--text);
+  border: 0;
+  border-left: 3px solid var(--c-evento);
+}
+
+.cal-pill.tentativo {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px dashed color-mix(in srgb, var(--text-dim) 60%, transparent);
+}
+
+.cal-pill.cal-sit-urgente,
+.cal-pill.cal-sit-vencido {
+  border-left-color: var(--peligro);
+  background: var(--peligro-fondo);
+}
+
+.cal-pill.cal-sit-listo,
+.cal-pill.cal-sit-cerrado {
+  border-left-color: var(--ok);
+}
+
+.cal-pill.cal-sit-cerrado {
+  opacity: 0.7;
+}
+
+.cal-pill b {
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.cal-mas {
+  font-size: 0.7em;
+  color: var(--text-dim);
+  padding-left: 4px;
+}
+
+.cal-copitas {
+  margin-top: auto;
+  font-size: 0.68em;
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+  font-size: 0.78em;
+  color: var(--text-dim);
+}
+
+.cal-leyenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-leyenda i {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.cal-l-confirmado {
+  background: var(--primario-suave);
+  border-left: 3px solid var(--primario);
+}
+
+.cal-l-tentativo {
+  border: 1px dashed var(--text-dim);
+}
+
+.cal-l-urgente {
+  background: var(--peligro-fondo);
+  border-left: 3px solid var(--peligro);
+}
+
+.cal-l-listo {
+  background: var(--ok-fondo);
+  border-left: 3px solid var(--ok);
+}
+
+.cal-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cal-lateral .panel {
+  margin-bottom: 0;
+}
+
+.cal-lateral-titulo {
+  font-size: 1em;
+  margin-top: 0;
+}
+
+.cal-vacio {
+  color: var(--text-dim);
+  font-size: 0.88em;
+  margin: 0;
+}
+
+.cal-tarjeta {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--radio-chico);
+  background: var(--navy-elevada);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--c-evento);
+  box-shadow: none;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.cal-tarjeta:hover {
+  filter: none;
+  background: var(--navy-panel);
+  box-shadow: var(--sombra-suave);
+}
+
+.cal-tarjeta.tentativo {
+  border-left-style: dashed;
+  opacity: 0.85;
+}
+
+.cal-tarjeta-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal-tarjeta-fila strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-sub {
+  color: var(--text-dim);
+  font-size: 0.8em;
+  margin-top: 2px;
+}
+
+.cal-estado {
+  font-size: 0.7em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: var(--navy-elevada);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.cal-estado-aceptada {
+  background: var(--ok-fondo);
+  color: var(--ok);
+  border-color: transparent;
+}
+
+.cal-estado-facturada {
+  background: var(--info-fondo);
+  color: var(--info);
+  border-color: transparent;
+}
+
+.cal-estado-enviada {
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+  border-color: transparent;
+}
+
+.cal-estado-rechazada {
+  background: var(--peligro-fondo);
+  color: var(--peligro);
+  border-color: transparent;
+}
+
+.cal-progreso {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  margin: 6px 0 10px;
+}
+
+.cal-progreso div {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ok);
+  transition: width 0.25s ease;
+}
+
+.cal-progreso-mini {
+  height: 4px;
+  margin: 8px 0 4px;
+}
+
+.cal-situacion,
+.cal-situacion-mini {
+  font-weight: 600;
+  border-radius: var(--radio-chico);
+}
+
+.cal-situacion {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 0.88em;
+}
+
+.cal-situacion-mini {
+  font-size: 0.74em;
+}
+
+.cal-situacion.cal-sit-urgente,
+.cal-situacion.cal-sit-vencido {
+  background: var(--peligro-fondo);
+  color: var(--peligro);
+}
+
+.cal-situacion.cal-sit-listo,
+.cal-situacion.cal-sit-cerrado {
+  background: var(--ok-fondo);
+  color: var(--ok);
+}
+
+.cal-situacion.cal-sit-en-curso {
+  background: var(--info-fondo);
+  color: var(--info);
+}
+
+.cal-situacion-mini.cal-sit-urgente,
+.cal-situacion-mini.cal-sit-vencido {
+  color: var(--peligro);
+}
+
+.cal-situacion-mini.cal-sit-listo,
+.cal-situacion-mini.cal-sit-cerrado {
+  color: var(--ok);
+}
+
+.cal-situacion-mini.cal-sit-en-curso {
+  color: var(--text-dim);
+}
+
+/* Ficha del evento */
+.overlay .tarjeta.cal-ficha {
+  max-width: 620px;
+  width: 100%;
+  border-top-color: var(--c-evento, var(--color-sucursal));
+}
+
+.cal-ficha-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cal-ficha-cabecera h2 {
+  margin: 4px 0 2px;
+}
+
+.cal-ficha-cabecera > button {
+  width: auto;
+  flex: none;
+}
+
+.cal-ficha-numero {
+  font-size: 0.78em;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-ficha-fecha {
+  color: var(--text-dim);
+  font-size: 0.9em;
+}
+
+.cal-ficha-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cal-dato {
+  background: var(--navy-elevada);
+  border-radius: var(--radio-chico);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.cal-dato > span {
+  display: block;
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.cal-contacto {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.82em;
+  margin-top: 4px;
+}
+
+.cal-contacto a {
+  color: var(--primario);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cal-notas-cliente {
+  font-size: 0.86em;
+  background: var(--navy-elevada);
+  border-radius: var(--radio-chico);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+
+.cal-notas-cliente span {
+  display: block;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.cal-tentativo {
+  border: 1px dashed var(--border);
+  border-radius: var(--radio-chico);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.cal-tentativo p {
+  margin-top: 0;
+  font-size: 0.9em;
+}
+
+.cal-seccion-titulo {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin: 6px 0 4px;
+}
+
+.cal-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.cal-paso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 9px 10px;
+  text-align: left;
+  background: var(--navy-elevada);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radio-chico);
+  box-shadow: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cal-paso:hover {
+  filter: none;
+  border-color: var(--ok);
+}
+
+.cal-paso.hecho {
+  background: var(--ok-fondo);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+
+.cal-paso-check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85em;
+  background: var(--navy-panel);
+}
+
+.cal-paso.hecho .cal-paso-check {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
+.cal-paso-texto {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.88em;
+  line-height: 1.25;
+}
+
+.cal-paso-texto small {
+  color: var(--text-dim);
+  font-size: 0.82em;
+  margin-top: 2px;
+}
+
+.cal-agenda-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cal-campo-ancho {
+  grid-column: 1 / -1;
+}
+
+.cal-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85em;
+}
+
+.cal-campo > span {
+  color: var(--text-dim);
+  font-size: 0.9em;
+}
+
+.cal-ficha-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.cal-ficha-acciones > * {
+  width: auto;
+}
+
+.cal-enlace-boton {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: var(--radio-chico);
+  font-weight: 600;
+}
+
+.cal-fecha-enlace {
+  width: auto;
+  margin: 0;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--primario);
+  border: 0;
+  box-shadow: none;
+  font-weight: 600;
+  font-size: 0.95em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cal-fecha-enlace:hover {
+  text-decoration: underline;
+  filter: none;
+}
+
+@media (max-width: 720px) {
+  .cal-celda {
+    min-height: 64px;
+    padding: 4px;
+  }
+
+  .cal-pill {
+    font-size: 0;
+    height: 6px;
+    padding: 0;
+  }
+
+  .cal-pill b {
+    display: none;
+  }
+
+  .cal-copitas {
+    display: none;
+  }
+
+  .cal-agenda-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cal-nav h2 {
+    min-width: 0;
+    font-size: 1.05em;
+  }
+}

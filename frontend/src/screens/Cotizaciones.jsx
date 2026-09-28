@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { colorSucursal } from '../lib/coloresSucursal.js';
 import { descargarPdf, imprimirTicket, leerConfigImpresora, verPdf } from '../lib/documentos.js';
+import CalendarioEventos, { ModalAceptar, horaCorta, situacionEvento } from '../components/CalendarioEventos.jsx';
 
 const UMBRAL_RTN_OBLIGATORIO = 10000;
 
@@ -12,6 +13,7 @@ const VACIO = {
   email_cliente: '',
   nombre_evento: '',
   fecha_evento: '',
+  hora_evento: '',
   lugar: '',
   cantidad_copitas: '',
   precio_copita: '',
@@ -123,6 +125,12 @@ function ModalFacturar({ cotizacion, sucursal, session, onCerrar, onFacturada })
             <strong>{fmtL(total)}</strong>
           </div>
         </div>
+        {Number(cotizacion.anticipo) > 0 && (
+          <p className="aviso-ok" style={{ cursor: 'default' }}>
+            Ya se recibió un anticipo de <strong>{fmtL(cotizacion.anticipo)}</strong>: cobra ahora solo el saldo de{' '}
+            <strong>{fmtL(Math.max(0, total - Number(cotizacion.anticipo)))}</strong>. La factura sale por el total del evento.
+          </p>
+        )}
 
         <div className="sucursal-emisora">
           <span className="leyenda-punto" style={{ background: colorSucursal(sucursal.id) }} />
@@ -170,6 +178,9 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
   const [guardando, setGuardando] = useState(false);
   const [enviandoId, setEnviandoId] = useState(null);
   const [facturando, setFacturando] = useState(null);
+  const [aceptando, setAceptando] = useState(null);
+  const [pestana, setPestana] = useState('calendario');
+  const [abrirEnCalendario, setAbrirEnCalendario] = useState(null);
 
   const sucursalActiva = sucursales.find((s) => s.id === sucursalId);
 
@@ -214,7 +225,12 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
     setError('');
     setGuardando(true);
     try {
-      await api.post('/cotizaciones', session, { ...form, rtn_cliente: form.rtn_cliente.trim() || null });
+      await api.post('/cotizaciones', session, {
+        ...form,
+        rtn_cliente: form.rtn_cliente.trim() || null,
+        fecha_evento: form.fecha_evento || null,
+        hora_evento: form.hora_evento || null,
+      });
       setForm(VACIO);
       cargar();
     } catch (e) {
@@ -225,6 +241,11 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
   }
 
   async function cambiarEstado(cot, estado) {
+    // Aceptar agenda el evento: se piden fecha, hora, sucursal y anticipo.
+    if (estado === 'aceptada') {
+      setAceptando(cot);
+      return;
+    }
     try {
       await api.put(`/cotizaciones/${cot.id}`, session, { estado });
       cargar();
@@ -254,6 +275,12 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
 
   const total = calcularTotal(form);
 
+  function reemplazar(c) {
+    setCotizaciones((lista) => lista.map((x) => (x.id === c.id ? { ...x, ...c } : x)));
+  }
+
+  const porAtender = cotizaciones.filter((c) => ['urgente', 'vencido'].includes(situacionEvento(c)?.tipo)).length;
+
   return (
     <div>
       {error && <div className="error">{error}</div>}
@@ -261,6 +288,45 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
         <div className="aviso-ok" onClick={() => setAviso('')}>
           {aviso}
         </div>
+      )}
+
+      {aceptando && (
+        <ModalAceptar
+          cotizacion={aceptando}
+          sucursales={sucursales}
+          sucursalIdDefecto={sucursalId}
+          session={session}
+          onCerrar={() => setAceptando(null)}
+          onAceptada={(c) => {
+            setAceptando(null);
+            reemplazar(c);
+            setAviso(`Cotización #${String(c.numero).padStart(4, '0')} aceptada y agendada en el calendario.`);
+          }}
+        />
+      )}
+
+      <div className="rep-pestanas" role="tablist">
+        <button role="tab" aria-selected={pestana === 'calendario'} className={pestana === 'calendario' ? 'activa' : ''} onClick={() => setPestana('calendario')}>
+          📅 Calendario de eventos
+          {porAtender > 0 && <span className="rep-contador">{porAtender}</span>}
+        </button>
+        <button role="tab" aria-selected={pestana === 'lista'} className={pestana === 'lista' ? 'activa' : ''} onClick={() => setPestana('lista')}>
+          Cotizaciones
+        </button>
+      </div>
+
+      {pestana === 'calendario' && (
+        <CalendarioEventos
+          cotizaciones={cotizaciones}
+          sucursales={sucursales}
+          sucursalIdDefecto={sucursalId}
+          session={session}
+          abrirId={abrirEnCalendario}
+          onAbierto={() => setAbrirEnCalendario(null)}
+          onActualizada={reemplazar}
+          onFacturar={(c) => (sucursalActiva ? setFacturando(c) : setError('Elige la sucursal que emite la factura'))}
+          onVerPdf={(c) => accionDocumento(verPdf(`/cotizaciones/${c.id}/pdf`, session))}
+        />
       )}
 
       {facturando && sucursalActiva && (
@@ -273,6 +339,8 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
         />
       )}
 
+      {pestana === 'lista' && (
+      <>
       <div className="panel">
         <h2>Nueva cotización de evento</h2>
         <p style={{ color: 'var(--text-dim)', fontSize: '0.9em', marginTop: -8 }}>
@@ -310,6 +378,12 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
             type="date"
             value={form.fecha_evento}
             onChange={(e) => setForm({ ...form, fecha_evento: e.target.value })}
+          />
+          <input
+            type="time"
+            title="Hora del evento"
+            value={form.hora_evento}
+            onChange={(e) => setForm({ ...form, hora_evento: e.target.value })}
           />
           <input placeholder="Lugar" value={form.lugar} onChange={(e) => setForm({ ...form, lugar: e.target.value })} />
         </div>
@@ -406,7 +480,21 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
                     </td>
                     <td>{c.nombre_evento}</td>
                     <td>
-                      {c.fecha_evento ?? '—'}
+                      {c.fecha_evento ? (
+                        <button
+                          className="cal-fecha-enlace"
+                          title="Ver en el calendario"
+                          onClick={() => {
+                            setAbrirEnCalendario(c.id);
+                            setPestana('calendario');
+                          }}
+                        >
+                          📅 {c.fecha_evento}
+                          {c.hora_evento && ` · ${horaCorta(c.hora_evento)}`}
+                        </button>
+                      ) : (
+                        '—'
+                      )}
                       {eventoProximo(c) && (
                         <span className="chip" style={{ marginLeft: 6, fontSize: '0.75em', color: 'var(--aviso)', borderColor: 'var(--aviso)' }}>
                           Evento próximo
@@ -474,6 +562,8 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

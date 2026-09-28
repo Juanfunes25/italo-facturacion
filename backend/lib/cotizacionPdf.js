@@ -12,6 +12,14 @@ function money(n) {
   return `L ${Number(n ?? 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// "15:30:00" → "3:30 p. m."
+function horaCorta(h) {
+  if (!h) return '';
+  const [hh, mm] = String(h).split(':').map(Number);
+  const sufijo = hh >= 12 ? 'p. m.' : 'a. m.';
+  return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${sufijo}`;
+}
+
 function fechaLarga(fecha) {
   if (!fecha) return 'Por confirmar';
   const d = typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? new Date(`${fecha}T12:00:00Z`) : new Date(fecha);
@@ -148,7 +156,7 @@ export function generarPdfCotizacion(cotizacion, res) {
     cotizacion.rtn_cliente && `RTN ${cotizacion.rtn_cliente}`,
   ]);
   tarjeta(M + anchoTarjeta + gap, 'Tu evento', cotizacion.nombre_evento || 'Evento', [
-    capitalizar(fechaLarga(cotizacion.fecha_evento)),
+    [capitalizar(fechaLarga(cotizacion.fecha_evento)), horaCorta(cotizacion.hora_evento)].filter(Boolean).join(' · '),
     cotizacion.lugar,
     `${Number(cotizacion.cantidad_copitas || 0).toLocaleString('es-HN')} copitas de gelato`,
   ]);
@@ -232,7 +240,18 @@ export function generarPdfCotizacion(cotizacion, res) {
   if (porCopita > 0) {
     doc.text(`Equivale a ${money(porCopita)} por copita`, xTot, yT + 66, { width: anchoTotales, align: 'right' });
   }
-  const finTotales = yT + 82;
+  let finTotales = yT + 82;
+  const anticipo = Number(cotizacion.anticipo || 0);
+  if (anticipo > 0) {
+    doc.font('PoppinsMedium').fontSize(8.5).fillColor(MARCA.verdeProfundo);
+    doc.text(`Anticipo recibido: ${money(anticipo)}`, xTot, finTotales - 2, { width: anchoTotales, align: 'right' });
+    doc.font('PoppinsSemiBold').fillColor(MARCA.carbon);
+    doc.text(`Saldo pendiente: ${money(Math.max(0, Number(cotizacion.total) - anticipo))}`, xTot, finTotales + 10, {
+      width: anchoTotales,
+      align: 'right',
+    });
+    finTotales += 26;
+  }
 
   const anchoCond = ancho - anchoTotales - 28;
   etiqueta(doc, 'Condiciones', M, y);
