@@ -182,7 +182,7 @@ export default function Dashboard({ session, sucursales }) {
                       <td>
                         {fmtL(s.ticket_promedio)}
                         {datos.por_sucursal.length > 1 && s.ticket_promedio === mejorTicket && mejorTicket > 0 && (
-                          <span className="chip" style={{ marginLeft: 8, fontSize: '0.75em', color: '#7ee787', borderColor: '#7ee787' }}>
+                          <span className="chip" style={{ marginLeft: 8, fontSize: '0.75em', color: 'var(--ok)', borderColor: 'var(--ok)' }}>
                             Mejor ticket
                           </span>
                         )}

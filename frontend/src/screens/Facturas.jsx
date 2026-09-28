@@ -4,11 +4,41 @@ import { colorSucursal } from '../lib/coloresSucursal.js';
 import { descargarCsv } from '../lib/csv.js';
 import { descargarPdf, imprimirTicket, verPdf } from '../lib/documentos.js';
 import { useCambiosEnVivo } from '../lib/tiempoReal.js';
+import { registrarEvento } from '../lib/eventos.js';
+
+// Formas de pago de una factura, con el efectivo neto del cambio devuelto.
+function formasDePago(f) {
+  const porForma = new Map();
+  for (const p of f.venta_pagos ?? []) {
+    const nombre = p.formas_pago?.nombre ?? 'Otro';
+    porForma.set(nombre, (porForma.get(nombre) ?? 0) + Number(p.monto));
+  }
+  if (porForma.has('Efectivo') && Number(f.cambio) > 0) porForma.set('Efectivo', porForma.get('Efectivo') - Number(f.cambio));
+  return [...porForma.entries()].map(([nombre, monto]) => ({ nombre, monto }));
+}
+
+const CLASE_FORMA = { Efectivo: 'pago-efectivo', Tarjeta: 'pago-tarjeta', Transferencia: 'pago-transferencia' };
+
+function ChipsPago({ factura }) {
+  const formas = formasDePago(factura);
+  if (formas.length === 0) return <span style={{ color: 'var(--text-dim)' }}>—</span>;
+  return (
+    <span className="chips-pago">
+      {formas.map((p) => (
+        <span key={p.nombre} className={`chip-pago ${CLASE_FORMA[p.nombre] ?? ''}`} title={`L ${p.monto.toFixed(2)}`}>
+          {p.nombre}
+          {formas.length > 1 && ` L${p.monto.toFixed(0)}`}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export default function Facturas({ session, perfil, sucursales, filtroInicial, onFiltroInicialUsado }) {
   const [filtros, setFiltros] = useState({ sucursal_id: '', fechaInicio: '', fechaFin: '', q: filtroInicial?.q ?? '' });
   const [cajeroFiltro, setCajeroFiltro] = useState('');
   const [soloAnuladas, setSoloAnuladas] = useState(false);
+  const [formaFiltro, setFormaFiltro] = useState('');
   const [facturas, setFacturas] = useState([]);
   const [seleccionada, setSeleccionada] = useState(null);
   const [error, setError] = useState('');
@@ -25,8 +55,17 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
     let lista = facturas;
     if (cajeroFiltro) lista = lista.filter((f) => f.perfiles?.nombre === cajeroFiltro);
     if (soloAnuladas) lista = lista.filter((f) => f.anulada);
+    if (formaFiltro) lista = lista.filter((f) => formasDePago(f).some((p) => p.nombre === formaFiltro));
     return lista;
-  }, [facturas, cajeroFiltro, soloAnuladas]);
+  }, [facturas, cajeroFiltro, soloAnuladas, formaFiltro]);
+  const totalesPorForma = useMemo(() => {
+    const t = {};
+    for (const f of facturasVisibles) {
+      if (f.anulada) continue;
+      for (const p of formasDePago(f)) t[p.nombre] = (t[p.nombre] ?? 0) + p.monto;
+    }
+    return t;
+  }, [facturasVisibles]);
   const totalVisible = useMemo(
     () => facturasVisibles.reduce((s, f) => s + (f.anulada ? 0 : Number(f.total)), 0),
     [facturasVisibles]
@@ -44,6 +83,7 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
         { titulo: 'RTN', valor: (f) => f.clientes?.rtn ?? '' },
         { titulo: 'Impuesto', valor: (f) => Number(f.isv_total).toFixed(2) },
         { titulo: 'Total', valor: (f) => Number(f.total).toFixed(2) },
+        { titulo: 'Forma de pago', valor: (f) => formasDePago(f).map((p) => `${p.nombre} ${p.monto.toFixed(2)}`).join(' + ') },
         { titulo: 'Cajero', valor: (f) => f.perfiles?.nombre ?? '' },
         { titulo: 'Anulada', valor: (f) => (f.anulada ? 'Sí' : 'No') },
       ]
@@ -56,6 +96,7 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
     if (filtros.fechaInicio) params.set('fechaInicio', filtros.fechaInicio);
     if (filtros.fechaFin) params.set('fechaFin', filtros.fechaFin);
     if (filtros.q) params.set('q', filtros.q);
+    if (filtros.q || filtros.fechaInicio) registrarEvento('factura.buscar', { q: filtros.q, desde: filtros.fechaInicio, hasta: filtros.fechaFin });
     setFacturas(await api.get(`/ventas?${params.toString()}`, session));
   }
 
@@ -94,6 +135,7 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
   async function verDetalle(id) {
     const detalle = await api.get(`/ventas/${id}`, session);
     setSeleccionada(detalle);
+    registrarEvento('factura.ver', { factura: detalle.numero_factura, total: Number(detalle.total) }, detalle.sucursal_id);
     setMotivoAnulacion('');
     setMontoAnulacion(detalle.total);
     setNotasCredito(perfil.rol === 'cajero' ? [] : await api.get(`/notas-credito?venta_id=${id}`, session));
@@ -144,6 +186,12 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
               ))}
             </select>
           )}
+          <select value={formaFiltro} onChange={(e) => setFormaFiltro(e.target.value)}>
+            <option value="">Todas las formas de pago</option>
+            <option value="Efectivo">Efectivo</option>
+            <option value="Tarjeta">Tarjeta</option>
+            <option value="Transferencia">Transferencia</option>
+          </select>
           <button className="boton-sm boton-secundario" onClick={exportarCsv} disabled={facturasVisibles.length === 0}>
             Exportar CSV
           </button>
@@ -167,6 +215,11 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
         <p style={{ color: 'var(--text-dim)' }}>
           {facturasVisibles.length} factura{facturasVisibles.length === 1 ? '' : 's'} · Total: L{' '}
           {totalVisible.toFixed(2)}
+          {Object.entries(totalesPorForma).map(([nombre, monto]) => (
+            <span key={nombre} className={`chip-pago ${CLASE_FORMA[nombre] ?? ''}`} style={{ marginLeft: 8 }}>
+              {nombre} L {monto.toFixed(2)}
+            </span>
+          ))}
         </p>
 
         <table className="tabla">
@@ -180,6 +233,7 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
               <th>RTN</th>
               <th>Impuesto</th>
               <th>Total</th>
+              <th>Pago</th>
               <th>Cajero</th>
               <th></th>
             </tr>
@@ -201,6 +255,9 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
                 <td>{f.clientes?.rtn ?? '—'}</td>
                 <td>L {Number(f.isv_total).toFixed(2)}</td>
                 <td>L {Number(f.total).toFixed(2)}</td>
+                <td>
+                  <ChipsPago factura={f} />
+                </td>
                 <td>{f.perfiles?.nombre ?? '—'}</td>
                 <td>
                   <button className="boton-sm boton-secundario" onClick={() => verDetalle(f.id)}>
@@ -233,22 +290,30 @@ export default function Facturas({ session, perfil, sucursales, filtroInicial, o
               <div key={d.id} className="pos-orden-linea">
                 <span>
                   {Number(d.cantidad)} × {d.nombre_producto}
+                  {Number(d.descuento) > 0 && (
+                    <span style={{ color: 'var(--ok)', fontSize: '0.85em' }}>
+                      {' '}
+                      · desc. {Number(d.descuento_porcentaje) || ''}%{Number(d.descuento_porcentaje) === 25 ? ' 3ra edad' : ''} −L{' '}
+                      {Number(d.descuento).toFixed(2)}
+                    </span>
+                  )}
                 </span>
                 <span>L {(Number(d.cantidad) * Number(d.precio_unitario)).toFixed(2)}</span>
               </div>
             ))}
             {Number(seleccionada.descuento) > 0 && (
               <div className="pos-totales-fila">
-                <span>
-                  Descuento{seleccionada.descuento_porcentaje ? ` ${seleccionada.descuento_porcentaje}%` : ''}
-                  {Number(seleccionada.descuento_porcentaje) === 25 ? ' (3ra edad)' : ''}
-                </span>
+                <span>Descuentos (por producto)</span>
                 <span>-L {Number(seleccionada.descuento).toFixed(2)}</span>
               </div>
             )}
             <div className="pos-totales-fila total">
               <span>Total</span>
               <span>L {Number(seleccionada.total).toFixed(2)}</span>
+            </div>
+            <div className="pos-totales-fila">
+              <span>Pagado con</span>
+              <ChipsPago factura={seleccionada} />
             </div>
             <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
               <button

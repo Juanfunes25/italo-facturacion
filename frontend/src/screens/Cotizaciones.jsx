@@ -135,7 +135,7 @@ function ModalFacturar({ cotizacion, sucursal, session, onCerrar, onFacturada })
           onChange={(e) => setRtn(e.target.value)}
         />
         {rtnInvalido && (
-          <p style={{ color: '#ffb86b', fontSize: '0.8em', marginTop: -8 }}>El RTN hondureño tiene 13-14 dígitos.</p>
+          <p style={{ color: 'var(--aviso)', fontSize: '0.8em', marginTop: -8 }}>El RTN hondureño tiene 13-14 dígitos.</p>
         )}
 
         <div style={{ fontSize: '0.85em', color: 'var(--text-dim)', marginBottom: 6 }}>Forma de pago</div>
@@ -408,7 +408,7 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
                     <td>
                       {c.fecha_evento ?? '—'}
                       {eventoProximo(c) && (
-                        <span className="chip" style={{ marginLeft: 6, fontSize: '0.75em', color: '#ffb86b', borderColor: '#ffb86b' }}>
+                        <span className="chip" style={{ marginLeft: 6, fontSize: '0.75em', color: 'var(--aviso)', borderColor: 'var(--aviso)' }}>
                           Evento próximo
                         </span>
                       )}
@@ -416,7 +416,7 @@ export default function Cotizaciones({ session, sucursales, sucursalId }) {
                     <td>{fmtL(c.total)}</td>
                     <td>
                       {facturada ? (
-                        <span className="chip" style={{ color: '#8fe3bd', borderColor: '#3ecf8e', marginTop: 0 }}>
+                        <span className="chip" style={{ color: 'var(--ok)', borderColor: 'var(--ok)', marginTop: 0 }}>
                           ✓ Facturada
                         </span>
                       ) : (

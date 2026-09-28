@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { round2 } from '../lib/facturacion.js';
-import { calcularCuadre, totalesPorForma } from '../lib/cierre.js';
+import { calcularCuadre, desgloseTurno, totalesPorForma } from '../lib/cierre.js';
 import { enviarResumenCierre } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { crearAlerta } from '../lib/alertas.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { anchoValido, envolverTicketHtml, formatearCierre } from '../lib/ticket.js';
 
@@ -52,7 +53,7 @@ async function ventasDelTurno(sucursal_id, desde, hasta) {
   for (let desdeFila = 0; ; desdeFila += 1000) {
     const { data, error } = await db
       .from('ventas')
-      .select('id, total, numero_factura, correlativo, anulada, cambio, venta_pagos(monto, formas_pago(nombre))')
+      .select('id, total, numero_factura, correlativo, anulada, cambio, descuento, venta_pagos(monto, formas_pago(nombre)), detalle_venta(descuento, descuento_porcentaje)')
       .eq('sucursal_id', sucursal_id)
       .eq('estado', 'pagada')
       .gte('fecha_emision', desde)
@@ -236,10 +237,47 @@ cierres.post('/', async (req, res) => {
         pos_ficohsa: cuadre.pos_ficohsa,
       },
     });
+    // Descuadre (L 1 o más en tarjeta o efectivo): alerta en Antifraude y
+    // correo inmediato a todos los administradores.
+    let alertaDescuadre = false;
+    if (noCuadra) {
+      const d = cuadre.diferencia_total;
+      const tipoDif = (x) => (x < 0 ? `faltante L ${Math.abs(x).toFixed(2)}` : `sobrante L ${x.toFixed(2)}`);
+      const partes = [];
+      if (Math.abs(cuadre.diferencia_tarjeta) >= 1) partes.push(`tarjeta ${tipoDif(cuadre.diferencia_tarjeta)}`);
+      if (Math.abs(cuadre.diferencia_efectivo) >= 1) partes.push(`efectivo ${tipoDif(cuadre.diferencia_efectivo)}`);
+      alertaDescuadre = Boolean(
+        await crearAlerta(req, {
+          tipo: 'cierre.descuadre',
+          severidad: Math.abs(d) >= 100 || Math.abs(cuadre.diferencia_efectivo) >= 100 ? 'alta' : 'media',
+          titulo: `Descuadre en cierre de ${cierre.sucursales?.nombre ?? 'sucursal'}: ${partes.join(', ')}`,
+          sucursalId: sucursal_id,
+          entidad: 'cierre',
+          entidadId: cierre.id,
+          correo: true,
+          detalle: {
+            cajero: req.perfil.nombre,
+            desde: new Date(fecha_inicio).toLocaleString('es-HN', { timeZone: ZONA }),
+            hasta: new Date(fecha_fin).toLocaleString('es-HN', { timeZone: ZONA }),
+            tarjeta_sistema: sistema.tarjeta,
+            pos_bac: cuadre.pos_bac,
+            pos_ficohsa: cuadre.pos_ficohsa,
+            diferencia_tarjeta: cuadre.diferencia_tarjeta,
+            efectivo_esperado: cuadre.efectivo_esperado,
+            efectivo_contado: cuadre.efectivo_contado,
+            diferencia_efectivo: cuadre.diferencia_efectivo,
+            transferencias: sistema.transferencia,
+            diferencia_total: d,
+            observaciones: String(observaciones ?? '').trim() || '(sin observaciones)',
+          },
+        })
+      );
+    }
     // No bloquea el cierre si el correo falla o no está configurado.
     enviarResumenCierre(cierre, cierre.sucursales?.nombre ?? '').catch(() => {});
 
-    res.status(201).json(esCiego(req.perfil) ? sinSistema(cierre) : cierre);
+    const respuesta = esCiego(req.perfil) ? sinSistema(cierre) : cierre;
+    res.status(201).json({ ...respuesta, descuadre: Boolean(noCuadra), alerta_enviada: alertaDescuadre });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -267,7 +305,19 @@ cierres.get('/:id/ticket', async (req, res) => {
   const cierre = await cierrePermitido(req);
   if (!cierre) return res.status(404).json({ error: 'Cierre no encontrado' });
   const ancho = anchoValido(req.query.columnas);
-  res.type('text/html').send(envolverTicketHtml(formatearCierre(cierre, ancho, { ocultarSistema: esCiego(req.perfil) }), ancho));
+  const ocultarSistema = esCiego(req.perfil);
+  // Desglose con las facturas reales del turno (igual que la factura, el
+  // ticket del cierre sale en la térmica).
+  let desglose = null;
+  if (!ocultarSistema) {
+    try {
+      desglose = desgloseTurno(await ventasDelTurno(cierre.sucursal_id, cierre.fecha_inicio, cierre.fecha_fin));
+    } catch (e) {
+      console.error('[cierre ticket] desglose', e.message);
+    }
+  }
+  await registrarAuditoria(req, { accion: 'cierre.imprimir', entidad: 'cierre', entidadId: cierre.id, sucursalId: cierre.sucursal_id });
+  res.type('text/html').send(envolverTicketHtml(formatearCierre(cierre, ancho, { ocultarSistema, desglose }), ancho));
 });
 
 cierres.get('/:id', async (req, res) => {

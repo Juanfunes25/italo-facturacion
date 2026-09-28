@@ -1,6 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { PassThrough } from 'node:stream';
-import { etiquetaDescuento } from './ticket.js';
+import { etiquetaDescuento, etiquetaPorcentaje } from './ticket.js';
 
 // Factura completa tamaño carta, para descargar o enviar por correo.
 export function generarPdfFactura(venta, res) {
@@ -55,6 +55,14 @@ export function generarPdfFactura(venta, res) {
     const bruto = Number(item.cantidad) * Number(item.precio_unitario);
     doc.text(`L ${bruto.toFixed(2)}`, 400, y, { width: 100, align: 'right' });
     doc.moveDown();
+    if (Number(item.descuento) > 0) {
+      const yd = doc.y;
+      doc.fontSize(8.5).fillColor('#555');
+      doc.text(`   ${etiquetaPorcentaje(item.descuento_porcentaje)}`, 50, yd, { width: 300 });
+      doc.text(`-L ${Number(item.descuento).toFixed(2)}`, 400, yd, { width: 100, align: 'right' });
+      doc.fillColor('black').fontSize(10);
+      doc.moveDown(0.6);
+    }
   }
 
   doc.moveTo(50, doc.y).lineTo(500, doc.y).stroke();

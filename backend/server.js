@@ -20,6 +20,7 @@ import { sucursales } from './routes/sucursales.js';
 import { dashboard } from './routes/dashboard.js';
 import { cotizaciones } from './routes/cotizaciones.js';
 import { auditoria } from './routes/auditoria.js';
+import { antifraude } from './routes/antifraude.js';
 import { requireRole } from './middleware/requireRole.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,13 +67,25 @@ app.use('/api/usuarios', usuarios);
 app.use('/api/dashboard', requireRole('admin', 'manager'), dashboard);
 app.use('/api/cotizaciones', requireRole('admin', 'manager'), cotizaciones);
 app.use('/api/auditoria', auditoria);
+app.use('/api/antifraude', antifraude);
 
 // Sirve el build del frontend (mismo patrón que italo-reposicion: un solo
 // servicio Render, backend + frontend estático).
 const frontendDist = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDist));
+// index.html y el service worker nunca se cachean en el navegador: así
+// cada caja detecta la versión nueva apenas se publica.
+app.use(
+  express.static(frontendDist, {
+    setHeaders(res, ruta) {
+      if (/(index\.html|sw\.js|registerSW\.js|manifest\.webmanifest)$/.test(ruta)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      }
+    },
+  })
+);
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(frontendDist, 'index.html'));
 });
 

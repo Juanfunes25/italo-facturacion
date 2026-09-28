@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { db } from '../db.js';
 
 // Replica el "Resumen de Impuestos" que WizPOS manda solo tras cada cierre.
 // No-op si no están configuradas las credenciales — no bloquea el cierre
@@ -14,10 +15,62 @@ function crearTransportador() {
   });
 }
 
+// Correos de todos los administradores activos (los usuarios con nombre de
+// usuario tienen un correo interno @italo.local que no recibe mensajes) más
+// RESUMEN_CIERRE_EMAIL si está configurado.
+export async function destinatariosAdmins() {
+  const lista = new Set();
+  if (process.env.RESUMEN_CIERRE_EMAIL) {
+    for (const c of process.env.RESUMEN_CIERRE_EMAIL.split(',')) if (c.trim()) lista.add(c.trim().toLowerCase());
+  }
+  try {
+    const { data: admins } = await db.from('perfiles').select('id').eq('rol', 'admin').eq('activo', true);
+    const ids = new Set((admins ?? []).map((a) => a.id));
+    const { data } = await db.auth.admin.listUsers({ perPage: 200 });
+    for (const u of data?.users ?? []) {
+      if (ids.has(u.id) && u.email && !u.email.endsWith('@italo.local')) lista.add(u.email.toLowerCase());
+    }
+  } catch (e) {
+    console.error('[correo] destinatarios', e.message);
+  }
+  if (lista.size === 0 && process.env.GMAIL_USER) lista.add(process.env.GMAIL_USER);
+  return [...lista];
+}
+
+const COLOR_SEVERIDAD = { alta: '#b3261e', media: '#9a6a00', baja: '#1f6096' };
+
+export async function enviarAlertaAdmins(alerta) {
+  if (!transportadorDisponible()) return { enviado: false, motivo: 'GMAIL_USER/GMAIL_APP_PASSWORD no configurados' };
+  const destinatarios = await destinatariosAdmins();
+  if (destinatarios.length === 0) return { enviado: false, motivo: 'Sin destinatarios' };
+  const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const filas = Object.entries(alerta.detalle ?? {})
+    .filter(([, v]) => v !== null && typeof v !== 'object')
+    .map(([k, v]) => `<tr><td style="color:#6b6a5e;padding:3px 12px 3px 0">${esc(k.replace(/_/g, ' '))}</td><td style="padding:3px 0"><strong>${esc(v)}</strong></td></tr>`)
+    .join('');
+  const cuando = new Date(alerta.created_at).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' });
+  await crearTransportador().sendMail({
+    from: process.env.GMAIL_USER,
+    to: destinatarios.join(', '),
+    subject: `⚠ ${alerta.titulo}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:560px">
+        <div style="border-left:5px solid ${COLOR_SEVERIDAD[alerta.severidad] ?? '#9a6a00'};padding:10px 16px;background:#faf6ec">
+          <div style="font-size:12px;color:#6b6a5e">ALERTA ${esc(alerta.severidad).toUpperCase()} · ${esc(alerta.sucursales?.nombre ?? '')} · ${cuando}</div>
+          <h2 style="margin:6px 0">${esc(alerta.titulo)}</h2>
+          <div style="color:#6b6a5e">Usuario: ${esc(alerta.usuario_nombre ?? '—')}</div>
+        </div>
+        <table style="margin-top:12px;font-size:14px">${filas}</table>
+        <p style="font-size:12px;color:#6b6a5e;margin-top:16px">Revísala en Italo Facturación → Antifraude.</p>
+      </div>`,
+  });
+  return { enviado: true };
+}
+
 export async function enviarResumenCierre(cierre, sucursalNombre) {
   if (!transportadorDisponible()) return { enviado: false, motivo: 'GMAIL_USER/GMAIL_APP_PASSWORD no configurados' };
 
-  const destinatario = process.env.RESUMEN_CIERRE_EMAIL || process.env.GMAIL_USER;
+  const destinatario = (await destinatariosAdmins()).join(', ');
   const asunto = `Cierre de caja — ${sucursalNombre} — ${new Date(cierre.fecha_fin).toLocaleDateString('es-HN')}`;
   const L = (n) => `L ${Number(n ?? 0).toFixed(2)}`;
   const dif = (n) => {
@@ -67,12 +120,28 @@ export async function enviarCotizacionCliente(cotizacion, pdfBuffer, destinatari
   if (!transportadorDisponible()) return { enviado: false, motivo: 'GMAIL_USER/GMAIL_APP_PASSWORD no configurados' };
   if (!destinatario) return { enviado: false, motivo: 'El cliente no tiene correo registrado' };
 
-  const asunto = `Cotización de evento — ${cotizacion.nombre_evento} — Italo Gelateria`;
+  const asunto = `Tu cotización para ${cotizacion.nombre_evento} — Ítalo Gelateria`;
+  const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const total = `L ${Number(cotizacion.total).toLocaleString('es-HN', { minimumFractionDigits: 2 })}`;
   const cuerpo = `
-    <p>Hola ${cotizacion.nombre_cliente ?? ''},</p>
-    <p>Adjunto va la cotización para "${cotizacion.nombre_evento}". Cualquier duda, quedamos atentos.</p>
-    <p>Total: L ${Number(cotizacion.total).toFixed(2)}</p>
-  `;
+  <div style="background:#F4F1EA;padding:24px 0;font-family:Poppins,Arial,sans-serif">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden">
+      <tr><td style="background:#000;padding:22px 28px;border-bottom:4px solid #C5D288">
+        <div style="color:#fff;font-size:26px;font-weight:800;letter-spacing:1px">ITALO</div>
+        <div style="color:#C5D288;font-size:12px;font-weight:600;letter-spacing:4px">GELATERIA</div>
+      </td></tr>
+      <tr><td style="padding:26px 28px;color:#1C1C18">
+        <p style="font-size:18px;font-weight:700;margin:0 0 8px">Hola, ${esc((cotizacion.nombre_cliente ?? '').split(' ')[0])}</p>
+        <p style="font-size:14px;color:#6B6A5E;line-height:1.5;margin:0 0 18px">Gracias por pensar en Ítalo para <strong style="color:#1C1C18">${esc(cotizacion.nombre_evento)}</strong>. Te adjuntamos la cotización en PDF.</p>
+        <div style="background:#000;border-radius:10px;padding:14px 18px;color:#fff">
+          <span style="color:#C5D288;font-size:11px;letter-spacing:2px">TOTAL DEL EVENTO</span><br>
+          <span style="font-size:24px;font-weight:700">${total}</span> <span style="color:#A9A796;font-size:12px">ISV incluido</span>
+        </div>
+        <p style="font-size:13px;color:#6B6A5E;margin:18px 0 0">¿Dudas o quieres reservar la fecha? Escríbenos al <strong style="color:#3E5A34">3149-3755</strong> (llamada o WhatsApp) o en Instagram <strong style="color:#3E5A34">@italogelateria</strong>.</p>
+      </td></tr>
+      <tr><td style="background:#17210F;color:#DCE6B8;font-size:11px;text-align:center;padding:12px">Los Andes · 10 Calle EXPRESS · Mackey · Próceres — San Pedro Sula</td></tr>
+    </table>
+  </div>`;
 
   try {
     await crearTransportador().sendMail({

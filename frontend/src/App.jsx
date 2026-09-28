@@ -18,6 +18,9 @@ import Impresora from './screens/Impresora.jsx';
 import Bitacora from './screens/Bitacora.jsx';
 import { useConexionEnVivo } from './lib/tiempoReal.js';
 import { accesoAEmail, claveInterna } from './lib/acceso.js';
+import { useActualizacion } from './lib/actualizacion.js';
+import { fijarSesionEventos, registrarEvento } from './lib/eventos.js';
+import Antifraude from './screens/Antifraude.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [acceso, setAcceso] = useState('');
@@ -83,6 +86,7 @@ const PANTALLAS = [
   { id: 'puntos-emision', etiqueta: 'CAI / Puntos de emisión', roles: ['admin', 'manager'], Componente: PuntosEmision },
   { id: 'usuarios', etiqueta: 'Usuarios', roles: ['admin'], Componente: Usuarios },
   { id: 'sucursales', etiqueta: 'Sucursales', roles: ['admin'], Componente: Sucursales },
+  { id: 'antifraude', etiqueta: 'Antifraude', roles: ['admin'], Componente: Antifraude },
   { id: 'bitacora', etiqueta: 'Bitácora', roles: ['admin'], Componente: Bitacora },
   { id: 'impresora', etiqueta: 'Impresora', roles: ['admin', 'manager', 'cajero'], Componente: Impresora },
 ];
@@ -119,6 +123,7 @@ function PantallaApp({ session, onSalir }) {
   // cambiar de sucursal a medio cobro y mezclar la venta con el punto de
   // emisión de otra sucursal.
   const [carritoOcupado, setCarritoOcupado] = useState(false);
+  const { hayNueva, actualizarAhora } = useActualizacion(carritoOcupado);
 
   // "Ver facturas" desde Clientes (y similares) navegan a otra pantalla
   // llevando un filtro ya armado, en vez de que el cajero tenga que
@@ -137,6 +142,48 @@ function PantallaApp({ session, onSalir }) {
 
   function recargarSucursales() {
     api.get('/sucursales', session).then(fijarSucursales).catch((e) => setError(e.message));
+  }
+
+  fijarSesionEventos(session);
+  const [alertasPendientes, setAlertasPendientes] = useState(0);
+
+  // Bitácora de uso: inicio de sesión (una vez por sesión) y cada pantalla
+  // que se abre. Sirve para ver quién anda "curioseando" el sistema.
+  useEffect(() => {
+    if (!perfil) return;
+    try {
+      const clave = `italo-facturacion:sesion-registrada:${session.user?.id}:${session.expires_at ?? ''}`;
+      if (!sessionStorage.getItem(clave)) {
+        registrarEvento('sesion.inicio', { navegador: navigator.userAgent.slice(0, 120), pantalla: `${window.screen.width}x${window.screen.height}` });
+        sessionStorage.setItem(clave, '1');
+      }
+    } catch {
+      registrarEvento('sesion.inicio', {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfil?.id]);
+
+  useEffect(() => {
+    if (perfil) registrarEvento('pantalla.ver', { pantalla: pantallaActiva }, sucursalActivaId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pantallaActiva, perfil?.id]);
+
+  // Contador de alertas antifraude sin revisar (sólo administradores).
+  useEffect(() => {
+    if (perfil?.rol !== 'admin') return undefined;
+    const revisar = () =>
+      api
+        .get('/antifraude/alertas/pendientes', session)
+        .then((r) => setAlertasPendientes(r.pendientes))
+        .catch(() => {});
+    revisar();
+    const t = setInterval(revisar, 60 * 1000);
+    return () => clearInterval(t);
+  }, [perfil?.rol, session, pantallaActiva]);
+
+  function salir() {
+    registrarEvento('sesion.fin', { pantalla: pantallaActiva });
+    setTimeout(onSalir, 150);
   }
 
   useEffect(() => {
@@ -236,13 +283,26 @@ function PantallaApp({ session, onSalir }) {
             onClick={() => setPantallaActiva(p.id)}
           >
             {p.etiqueta}
+            {p.id === 'antifraude' && alertasPendientes > 0 && <span className="nav-contador">{alertasPendientes}</span>}
           </button>
         ))}
         <IndicadorVivo />
-        <button className="salir" onClick={onSalir}>
+        <button
+          className="salir"
+          onClick={salir}
+          title={`Versión ${new Date(__VERSION__).toLocaleString('es-HN', { timeZone: 'America/Tegucigalpa' })}`}
+        >
           {perfil.nombre} · Salir
         </button>
       </nav>
+      {hayNueva && (
+        <div className="aviso-version">
+          Hay una versión nueva del sistema. Se instalará sola al terminar esta venta.
+          <button className="boton-sm" onClick={actualizarAhora}>
+            Actualizar ya
+          </button>
+        </div>
+      )}
       <div className="contenido">
         <Componente
           session={session}

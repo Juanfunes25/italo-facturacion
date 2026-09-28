@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { descargarCsv } from '../lib/csv.js';
 import { ATAJOS_REPORTES, hoyHn, primerDiaMesHn } from '../lib/rangosFecha.js';
 import { colorSucursal, nombreCortoSucursal } from '../lib/coloresSucursal.js';
+import { registrarEvento } from '../lib/eventos.js';
 
 const ZONA = 'America/Tegucigalpa';
 const FILTROS_KEY = 'italo-facturacion:reportes:filtros:v2';
@@ -347,6 +348,7 @@ export default function Reportes({ session, sucursales }) {
       const params = new URLSearchParams({ fechaInicio: f.fechaInicio, fechaFin: f.fechaFin });
       if (f.sucursal_id) params.set('sucursal_id', f.sucursal_id);
       setDatos(await api.get(`/reportes/completo?${params.toString()}`, session));
+      registrarEvento('reporte.generar', { desde: f.fechaInicio, hasta: f.fechaFin, sucursal: f.sucursal_id || 'todas' });
     } catch (e) {
       setError(e.message);
     } finally {

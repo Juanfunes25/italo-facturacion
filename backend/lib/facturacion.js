@@ -35,6 +35,7 @@ export function calcularLineas(items, cliente) {
       cantidad,
       precio_unitario: precioUnitario,
       descuento,
+      descuento_porcentaje: Number(item.descuento_porcentaje || 0),
       impuesto_tasa: tasa,
       monto,
       base,
@@ -76,11 +77,20 @@ function repartirDescuento(lineas, descuento, cliente) {
   });
 }
 
+// Descuento POR PRODUCTO (línea): en una misma orden puede haber una
+// persona de tercera edad y otra que no, así que el 25% se aplica sólo a
+// lo que consume esa persona. El monto de cada línea se calcula aquí y
+// calcularLineas() ya lo resta antes de separar base/ISV.
+export function descuentoDeLinea(precioUnitario, cantidad, porcentaje) {
+  return round2((round2(Number(precioUnitario) * Number(cantidad)) * Number(porcentaje || 0)) / 100);
+}
+
 export function calcularTotales(items, cliente, descuentoGlobal = 0) {
   const brutas = calcularLineas(items, cliente);
   const totalBruto = round2(brutas.reduce((s, l) => s + l.monto, 0));
   const descuento = Math.min(totalBruto, Math.max(0, round2(Number(descuentoGlobal || 0))));
   const lineas = descuento > 0 ? repartirDescuento(brutas, descuento, cliente) : brutas;
+  const descuentoLineas = round2(brutas.reduce((s, l) => s + Number(l.descuento || 0), 0));
 
   const totales = { subtotal_exento: 0, subtotal_exonerado: 0, subtotal_gravado_15: 0, isv_total: 0 };
   for (const l of lineas) {
@@ -92,24 +102,15 @@ export function calcularTotales(items, cliente, descuentoGlobal = 0) {
 
   return {
     lineas,
-    subtotal_bruto: totalBruto,
+    // Sub-total antes de cualquier descuento (precio × cantidad).
+    subtotal_bruto: round2(totalBruto + descuentoLineas),
     subtotal_exento: round2(totales.subtotal_exento),
     subtotal_exonerado: round2(totales.subtotal_exonerado),
     subtotal_gravado_15: round2(totales.subtotal_gravado_15),
     isv_total: round2(totales.isv_total),
-    descuento,
+    descuento: round2(descuento + descuentoLineas),
     total: round2(lineas.reduce((s, l) => s + l.monto, 0)),
   };
-}
-
-// Descuento por porcentaje fijo (0/10/25) → monto en Lempiras sobre el bruto.
-export function descuentoPorPorcentaje(items, cliente, porcentaje) {
-  const brutas = calcularLineas(items, cliente);
-  // Redondear el bruto ANTES del porcentaje, igual que el POS: si no, un
-  // bruto que en coma flotante queda en ...4999 redondea distinto y la
-  // pantalla y la factura difieren en un centavo.
-  const totalBruto = round2(brutas.reduce((s, l) => s + l.monto, 0));
-  return round2((totalBruto * porcentaje) / 100);
 }
 
 export function formatearNumeroFactura(puntoEmision, correlativo) {

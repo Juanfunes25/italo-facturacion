@@ -12,7 +12,7 @@ const SELECT_VENTA = [
   'isv_total, total, cambio, fecha_emision, anulada',
   'sucursales(nombre), clientes(nombre, rtn, es_consumidor_final), perfiles(nombre), puntos_emision(es_borrador)',
   'venta_pagos(monto, formas_pago(nombre))',
-  'detalle_venta(producto_id, nombre_producto, cantidad, monto)',
+  'detalle_venta(producto_id, nombre_producto, cantidad, monto, descuento, descuento_porcentaje)',
 ].join(', ');
 
 const n = (v) => Number(v ?? 0);
@@ -268,12 +268,26 @@ async function construirReporte(filtros) {
       });
     }
 
-    const pctDesc = n(v.descuento_porcentaje);
-    if (n(v.descuento) > 0) {
-      sumar(descuentos, pctDesc, () => ({ porcentaje: pctDesc, facturas: 0, monto: 0, ventas: 0 }), (d) => {
-        d.facturas += 1;
-        d.monto += n(v.descuento);
-        d.ventas += n(v.total);
+    // Descuento por producto: se agrupa por el porcentaje de cada línea
+    // (una misma factura puede tener 10% y 25% de tercera edad).
+    const lineasConDescuento = (v.detalle_venta ?? []).filter((d) => n(d.descuento) > 0);
+    const porcentajesVenta = new Set();
+    for (const d of lineasConDescuento) {
+      const pctDesc = n(d.descuento_porcentaje) || n(v.descuento_porcentaje);
+      sumar(descuentos, pctDesc, () => ({ porcentaje: pctDesc, facturas: 0, monto: 0, ventas: 0, unidades: 0 }), (x) => {
+        if (!porcentajesVenta.has(pctDesc)) x.facturas += 1;
+        x.monto += n(d.descuento);
+        x.ventas += n(d.monto);
+        x.unidades += n(d.cantidad);
+      });
+      porcentajesVenta.add(pctDesc);
+    }
+    if (lineasConDescuento.length === 0 && n(v.descuento) > 0) {
+      const pctDesc = n(v.descuento_porcentaje);
+      sumar(descuentos, pctDesc, () => ({ porcentaje: pctDesc, facturas: 0, monto: 0, ventas: 0, unidades: 0 }), (x) => {
+        x.facturas += 1;
+        x.monto += n(v.descuento);
+        x.ventas += n(v.total);
       });
     }
   }

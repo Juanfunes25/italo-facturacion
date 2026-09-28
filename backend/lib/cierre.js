@@ -64,3 +64,41 @@ export function calcularCuadre(sistema, entradas) {
     diferencia_total: round2(diferenciaTarjeta + diferenciaEfectivo),
   };
 }
+
+// Desglose del turno para el ticket del cierre: cuántas facturas y cuánto
+// por forma de pago, las de tarjeta/transferencia una por una (para
+// cotejarlas con los vouchers del POS y la banca), anuladas y descuentos.
+export function desgloseTurno(ventas) {
+  const formas = {};
+  const tarjeta = [];
+  const transferencia = [];
+  const anuladas = [];
+  const descuentos = {};
+  for (const v of ventas) {
+    if (v.anulada) {
+      anuladas.push({ numero: v.numero_factura, total: Number(v.total) });
+      continue;
+    }
+    const porForma = {};
+    for (const p of v.venta_pagos ?? []) {
+      const nombre = p.formas_pago?.nombre ?? 'Otro';
+      porForma[nombre] = (porForma[nombre] ?? 0) + Number(p.monto);
+    }
+    if (porForma.Efectivo !== undefined) porForma.Efectivo -= Number(v.cambio ?? 0);
+    for (const [nombre, monto] of Object.entries(porForma)) {
+      formas[nombre] = formas[nombre] ?? { facturas: 0, monto: 0 };
+      formas[nombre].facturas += 1;
+      formas[nombre].monto = round2(formas[nombre].monto + monto);
+      if (nombre === 'Tarjeta') tarjeta.push({ numero: v.numero_factura, monto: round2(monto) });
+      if (nombre === 'Transferencia') transferencia.push({ numero: v.numero_factura, monto: round2(monto) });
+    }
+    for (const d of v.detalle_venta ?? []) {
+      if (Number(d.descuento) <= 0) continue;
+      const pct = Number(d.descuento_porcentaje ?? 0);
+      descuentos[pct] = descuentos[pct] ?? { lineas: 0, monto: 0 };
+      descuentos[pct].lineas += 1;
+      descuentos[pct].monto = round2(descuentos[pct].monto + Number(d.descuento));
+    }
+  }
+  return { formas, tarjeta, transferencia, anuladas, descuentos };
+}

@@ -2,13 +2,14 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import {
   calcularTotales,
-  descuentoPorPorcentaje,
+  descuentoDeLinea,
   PORCENTAJES_DESCUENTO,
   round2,
 } from '../lib/facturacion.js';
 import { generarPdfFacturaBuffer } from '../lib/pdf.js';
 import { enviarFacturaCliente } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { crearAlerta } from '../lib/alertas.js';
 import { textoSeguroFiltro } from '../lib/consultas.js';
 import { filtrarRango } from '../lib/fechas.js';
 
@@ -26,6 +27,16 @@ export function sucursalDelCajero(perfil) {
 function sucursalAjena(perfil, sucursalId) {
   const propia = sucursalDelCajero(perfil);
   return Boolean(propia && sucursalId && propia !== sucursalId);
+}
+
+// Un cajero tocando órdenes de otra sucursal: se bloquea y queda registrado.
+function registrarSucursalAjena(req, sucursalId) {
+  registrarAuditoria(req, {
+    accion: 'acceso.denegado',
+    entidad: 'sistema',
+    sucursalId: req.perfil.sucursal_id,
+    detalle: { metodo: req.method, ruta: req.originalUrl.split('?')[0], motivo: 'otra sucursal', sucursal_intentada: sucursalId },
+  });
 }
 
 export async function obtenerPuntoEmisionActivo(sucursal_id) {
@@ -64,7 +75,9 @@ function validarPorcentaje(valor) {
   return porcentaje;
 }
 
-async function construirItems(itemsSolicitados, puedeEditarPrecio) {
+// porcentajeGeneral: compatibilidad con cajas que aún mandan un solo
+// descuento para toda la orden (versión anterior de la app).
+async function construirItems(itemsSolicitados, puedeEditarPrecio, porcentajeGeneral = 0) {
   const productoIds = itemsSolicitados.map((i) => i.producto_id);
   const { data: productosDb, error } = await db.from('productos').select('*').in('id', productoIds);
   if (error) throw new Error(error.message);
@@ -83,12 +96,14 @@ async function construirItems(itemsSolicitados, puedeEditarPrecio) {
     if (!Number.isFinite(Number(precio_unitario)) || Number(precio_unitario) < 0) {
       throw new Error(`Precio inválido para ${producto.nombre}`);
     }
+    const porcentaje = validarPorcentaje(item.descuento_porcentaje ?? porcentajeGeneral);
     return {
       producto_id: producto.id,
       nombre_producto: producto.nombre,
       cantidad,
       precio_unitario: Number(precio_unitario),
-      descuento: 0,
+      descuento: descuentoDeLinea(precio_unitario, cantidad, porcentaje),
+      descuento_porcentaje: porcentaje,
       impuesto_tasa: producto.impuesto1_tasa,
     };
   });
@@ -106,6 +121,7 @@ export async function guardarDetalle(venta_id, lineas) {
     cantidad: l.cantidad,
     precio_unitario: l.precio_unitario,
     descuento: l.descuento,
+    descuento_porcentaje: l.descuento_porcentaje ?? 0,
     impuesto_tasa: l.impuesto_tasa,
     monto: l.monto,
   }));
@@ -114,23 +130,29 @@ export async function guardarDetalle(venta_id, lineas) {
 }
 
 function resumenItems(lineas) {
-  return lineas.map((l) => `${Number(l.cantidad)}× ${l.nombre_producto}`);
+  return lineas.map(
+    (l) => `${Number(l.cantidad)}× ${l.nombre_producto}${Number(l.descuento_porcentaje) ? ` (-${Number(l.descuento_porcentaje)}%)` : ''}`
+  );
 }
 
 async function calcularOrden(req, { cliente_id, items, descuento_porcentaje }) {
-  const porcentaje = validarPorcentaje(descuento_porcentaje);
+  const porcentajeGeneral = validarPorcentaje(descuento_porcentaje);
   const cliente = await obtenerCliente(cliente_id);
   const puedeEditarPrecio = req.perfil.rol !== 'cajero';
-  const lineas = await construirItems(items, puedeEditarPrecio);
-  const descuento = descuentoPorPorcentaje(lineas, cliente, porcentaje);
-  return { porcentaje, cliente, totales: calcularTotales(lineas, cliente, descuento) };
+  const lineas = await construirItems(items, puedeEditarPrecio, porcentajeGeneral);
+  // Resumen para la venta: el mayor porcentaje aplicado en alguna línea.
+  const porcentaje = Math.max(0, ...lineas.map((l) => l.descuento_porcentaje));
+  return { porcentaje, cliente, totales: calcularTotales(lineas, cliente, 0) };
 }
 
 ventas.post('/', async (req, res) => {
   try {
     const { sucursal_id, tipo_orden, items, nota_interna } = req.body;
     if (!sucursal_id) return res.status(400).json({ error: 'sucursal_id es obligatorio' });
-    if (sucursalAjena(req.perfil, sucursal_id)) return res.status(403).json({ error: 'No puedes facturar en otra sucursal' });
+    if (sucursalAjena(req.perfil, sucursal_id)) {
+      registrarSucursalAjena(req, sucursal_id);
+      return res.status(403).json({ error: 'No puedes facturar en otra sucursal' });
+    }
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'La orden necesita al menos un producto' });
     }
@@ -190,7 +212,10 @@ ventas.put('/:id', async (req, res) => {
       .eq('id', req.params.id)
       .single();
     if (errBusqueda || !ventaActual) return res.status(404).json({ error: 'Orden no encontrada' });
-    if (sucursalAjena(req.perfil, ventaActual.sucursal_id)) return res.status(403).json({ error: 'Esa orden es de otra sucursal' });
+    if (sucursalAjena(req.perfil, ventaActual.sucursal_id)) {
+      registrarSucursalAjena(req, ventaActual.sucursal_id);
+      return res.status(403).json({ error: 'Esa orden es de otra sucursal' });
+    }
     if (ventaActual.estado !== 'abierta') {
       return res.status(409).json({ error: 'Sólo se pueden editar órdenes abiertas' });
     }
@@ -261,7 +286,7 @@ ventas.get('/', async (req, res) => {
   const q = textoSeguroFiltro(qCruda);
   let query = db
     .from('ventas')
-    .select('*, clientes(nombre, rtn), perfiles(nombre)')
+    .select('*, clientes(nombre, rtn), perfiles(nombre), venta_pagos(monto, formas_pago(nombre))')
     .order('created_at', { ascending: false })
     // Con rango de fechas (ej. detalle de un cierre de caja) se permiten más
     // filas; sin rango, las 200 más recientes bastan para la pantalla.
@@ -323,7 +348,7 @@ ventas.post('/:id/reenviar-correo', async (req, res) => {
 export async function obtenerVentaCompleta(id) {
   const { data: venta, error } = await db
     .from('ventas')
-    .select('*, clientes(*), perfiles(nombre), sucursales(nombre, alias), puntos_emision(*)')
+    .select('*, clientes(*), perfiles(nombre), sucursales(nombre, alias), puntos_emision(*), venta_pagos(monto, formas_pago(nombre))')
     .eq('id', id)
     .single();
   if (error || !venta) return null;
@@ -361,6 +386,19 @@ ventas.delete('/:id', async (req, res) => {
       items: resumenItems(venta.detalle ?? []),
     },
   });
+  // Descartar una orden ya armada es la forma clásica de cobrar sin
+  // facturar: si pasa de L 150 queda como alerta para revisar.
+  if (Number(venta.total) >= 150) {
+    await crearAlerta(req, {
+      tipo: 'venta.descartar_orden',
+      severidad: Number(venta.total) >= 500 ? 'alta' : 'media',
+      titulo: `Orden descartada de L ${Number(venta.total).toFixed(2)} (${req.perfil.nombre})`,
+      sucursalId: venta.sucursal_id,
+      entidad: 'venta',
+      entidadId: venta.id,
+      detalle: { orden: venta.numero_orden, total: Number(venta.total), productos: resumenItems(venta.detalle ?? []).join(', ') },
+    });
+  }
   res.status(204).end();
 });
 

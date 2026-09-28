@@ -25,6 +25,18 @@ const ACCIONES = {
   'cai.activar': 'Activó CAI real (SAR)',
   'cierre.crear': 'Cerró caja',
   'sucursal.editar': 'Editó sucursal',
+  'sesion.inicio': 'Inició sesión',
+  'sesion.fin': 'Cerró sesión',
+  'pantalla.ver': 'Abrió pantalla',
+  'orden.quitar_producto': 'Quitó producto de orden',
+  'orden.descuento': 'Aplicó descuento',
+  'factura.buscar': 'Buscó facturas',
+  'factura.ver': 'Vio detalle de factura',
+  'reporte.generar': 'Generó reporte',
+  'acceso.denegado': 'Intentó entrar sin permiso',
+  'cierre.imprimir': 'Imprimió cierre',
+  'alerta.revisar': 'Revisó alerta',
+  'venta.error_pagos': 'Error al guardar pagos',
 };
 
 // Acciones que merecen atención inmediata al revisar la bitácora.
@@ -36,6 +48,9 @@ const SENSIBLES = new Set([
   'cai.editar',
   'cai.activar',
   'usuario.cambiar_contrasena',
+  'orden.quitar_producto',
+  'acceso.denegado',
+  'venta.error_pagos',
 ]);
 
 const FILTROS_ACCION = [
@@ -50,6 +65,10 @@ const FILTROS_ACCION = [
   { valor: 'producto.', etiqueta: 'Cambios de productos/precios' },
   { valor: 'usuario.', etiqueta: 'Cambios de usuarios' },
   { valor: 'cierre.', etiqueta: 'Cierres de caja' },
+  { valor: 'orden.', etiqueta: 'Cambios en órdenes (quitar/descuento)' },
+  { valor: 'acceso.', etiqueta: 'Accesos sin permiso' },
+  { valor: 'sesion.', etiqueta: 'Inicios y cierres de sesión' },
+  { valor: 'pantalla.', etiqueta: 'Navegación por pantallas' },
 ];
 
 function documento(r) {
@@ -85,6 +104,20 @@ function resumen(r) {
         return `POS BAC L ${d.pos_bac} · Ficohsa L ${d.pos_ficohsa} (dif. L ${d.diferencia_tarjeta}) · Efectivo contado L ${d.total_contado} de L ${d.total_esperado} (dif. L ${d.diferencia_efectivo})`;
       }
       return `Esperado L ${d.total_esperado} · Contado L ${d.total_contado} · Diferencia L ${d.diferencia}`;
+    case 'orden.quitar_producto':
+      return `${d.cantidad ?? 1} × ${d.producto ?? ''} · L ${d.monto ?? 0}`;
+    case 'orden.descuento':
+      return `${d.porcentaje}% a ${d.cantidad} × ${d.producto}`;
+    case 'pantalla.ver':
+      return d.pantalla ?? '';
+    case 'acceso.denegado':
+      return `${d.metodo ?? ''} ${d.ruta ?? ''}${d.motivo ? ` · ${d.motivo}` : ''}`;
+    case 'factura.buscar':
+      return [d.q && `"${d.q}"`, d.desde && `${d.desde} a ${d.hasta || 'hoy'}`].filter(Boolean).join(' · ');
+    case 'factura.ver':
+      return `${d.factura ?? ''} · L ${d.total ?? ''}`;
+    case 'sesion.inicio':
+      return d.navegador ? String(d.navegador).slice(0, 60) : '';
     default:
       return d.total != null ? `L ${d.total}` : d.nota ?? '';
   }

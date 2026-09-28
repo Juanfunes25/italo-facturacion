@@ -164,12 +164,12 @@ export default function Sucursales({ session, sucursales, onCreada }) {
                   <td>
                     {estado?.es_borrador && <span className="badge-borrador">Borrador</span>}
                     {estado && !estado.es_borrador && !estado.alerta && (
-                      <span className="chip" style={{ color: '#7ee787', borderColor: '#7ee787' }}>
+                      <span className="chip" style={{ color: 'var(--ok)', borderColor: 'var(--ok)' }}>
                         Activo
                       </span>
                     )}
                     {estado && !estado.es_borrador && estado.alerta && (
-                      <span className="chip" style={{ color: '#ffb86b', borderColor: '#ffb86b' }}>
+                      <span className="chip" style={{ color: 'var(--aviso)', borderColor: 'var(--aviso)' }}>
                         Por vencer/agotarse
                       </span>
                     )}

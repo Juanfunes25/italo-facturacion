@@ -46,11 +46,20 @@ function ajustar(texto, ancho) {
   return renglones;
 }
 
-export function etiquetaDescuento(venta) {
-  const pct = Number(venta.descuento_porcentaje ?? 0);
-  if (pct === 25) return 'Desc. 25% 3ra edad';
-  if (pct > 0) return `Descuento ${pct}%`;
+export function etiquetaPorcentaje(pct) {
+  const n = Number(pct ?? 0);
+  if (n === 25) return 'Desc. 25% 3ra edad';
+  if (n > 0) return `Descuento ${n}%`;
   return 'Descuento';
+}
+
+// Con descuento por producto, una orden puede mezclar 10% y 25%: el total
+// se rotula genérico y el detalle va debajo de cada producto.
+export function etiquetaDescuento(venta) {
+  const porcentajes = new Set((venta.detalle ?? []).filter((d) => Number(d.descuento) > 0).map((d) => Number(d.descuento_porcentaje ?? 0)));
+  if (porcentajes.size > 1) return 'Total descuentos';
+  if (porcentajes.size === 1) return etiquetaPorcentaje([...porcentajes][0]);
+  return etiquetaPorcentaje(venta.descuento_porcentaje);
 }
 
 export function formatearTicket(venta, ancho = 48) {
@@ -83,6 +92,9 @@ export function formatearTicket(venta, ancho = 48) {
     for (const r of ajustar(`${Number(item.cantidad)} ${item.nombre_producto}`, ancho)) L.push(r);
     const bruto = Number(item.cantidad) * Number(item.precio_unitario);
     L.push(filaMontoDerecha(`  @ L${Number(item.precio_unitario).toFixed(2)}`, bruto, ancho));
+    if (Number(item.descuento) > 0) {
+      L.push(filaMontoDerecha(`  ${etiquetaPorcentaje(item.descuento_porcentaje)}`, -Number(item.descuento), ancho));
+    }
   }
   L.push(linea('-', ancho));
 
@@ -125,7 +137,7 @@ function etiquetaDiferencia(dif) {
 
 // Ticket del cierre de caja, para engrapar con los cierres de lote de los
 // dos POS. Con cierre ciego (ocultarSistema) sólo imprime lo contado.
-export function formatearCierre(cierre, ancho = 48, { ocultarSistema = false } = {}) {
+export function formatearCierre(cierre, ancho = 48, { ocultarSistema = false, desglose = null } = {}) {
   const L = [];
   const fila = (etiqueta, monto) => L.push(filaMontoDerecha(etiqueta, monto, ancho));
   L.push(centrar('ITALO GELATERIA', ancho));
@@ -168,6 +180,37 @@ export function formatearCierre(cierre, ancho = 48, { ocultarSistema = false } =
     L.push(linea('=', ancho));
     fila('TOTAL VENTAS', cierre.total_ventas ?? 0);
     fila(`${etiquetaDiferencia(cierre.diferencia)} TOTAL`, Math.abs(cierre.diferencia ?? 0));
+    L.push(linea('=', ancho));
+    if (Math.abs(Number(cierre.diferencia_tarjeta ?? 0)) >= 1 || Math.abs(Number(cierre.diferencia_efectivo ?? 0)) >= 1) {
+      L.push(centrar('*** DESCUADRE ***', ancho));
+      L.push(centrar('Notificado a administracion', ancho));
+      L.push(linea('=', ancho));
+    }
+  }
+
+  if (desglose) {
+    L.push('DESGLOSE DEL TURNO');
+    for (const [nombre, f] of Object.entries(desglose.formas)) {
+      fila(`  ${nombre} x${f.facturas}`, f.monto);
+    }
+    const listar = (titulo, lista) => {
+      if (lista.length === 0) return;
+      L.push(linea('-', ancho));
+      L.push(`${titulo} (${lista.length})`);
+      for (const x of lista) fila(`  ${String(x.numero ?? '').slice(-8)}`, x.monto ?? x.total);
+    };
+    // Una por una, para cotejar contra los vouchers del POS y la banca.
+    listar('FACTURAS CON TARJETA', desglose.tarjeta);
+    listar('TRANSFERENCIAS', desglose.transferencia);
+    listar('ANULADAS', desglose.anuladas);
+    const descuentos = Object.entries(desglose.descuentos);
+    if (descuentos.length > 0) {
+      L.push(linea('-', ancho));
+      L.push('DESCUENTOS APLICADOS');
+      for (const [pct, d] of descuentos) {
+        fila(`  ${Number(pct) === 25 ? '25% 3ra edad' : `${pct}%`} (${d.lineas} prod.)`, d.monto);
+      }
+    }
     L.push(linea('=', ancho));
   }
 

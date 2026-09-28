@@ -1,21 +1,36 @@
 :root {
-  --navy: #0b1220;
-  --navy-panel: #131c2e;
-  --navy-elevada: #182238;
-  --terracota: #c5603c;
-  --terracota-claro: #d97a56;
-  --gold: #d4af37;
-  --text: #eef1f6;
-  --text-dim: #94a1b8;
-  --border: #22304a;
+  color-scheme: light;
+  /* Tema claro (pedido de Juan: fondo #efddb7, más cómodo para la vista).
+     Los nombres --navy* se conservan por compatibilidad, pero ahora son:
+       --navy          fondo de la página (crema)
+       --navy-panel    tarjetas y paneles (casi blanco cálido)
+       --navy-elevada  filas, chips y zonas hundidas dentro de un panel */
+  --navy: #efddb7;
+  --navy-panel: #fffaf0;
+  --navy-elevada: #f6ead0;
+  --campo: #fffdf8;
+  --terracota: #b5532f;
+  --terracota-claro: #c5603c;
+  --gold: #9a7410;
+  --text: #2a2118;
+  --text-dim: #6e604a;
+  --border: #dfcca0;
   --color-sucursal: var(--terracota);
+  /* Texto dibujado con el color de la sucursal: un paso más oscuro para
+     que se lea sobre crema (los colores de sucursal son de relleno). */
+  --color-sucursal-texto: color-mix(in srgb, var(--color-sucursal) 62%, #1c1c18);
+  /* Texto sobre un relleno del color de sucursal / botones de color. */
+  --texto-sobre-color: #1c1c18;
+  --ok: #1d7a45;
+  --ok-fondo: #e1f1e4;
+  --peligro: #b3261e;
+  --peligro-fondo: #fbe3df;
+  --aviso: #7a5a06;
+  --aviso-fondo: #fbeecb;
+  --info: #1f6096;
+  --info-fondo: #e1eef8;
 
-  /* Paleta categórica del dashboard — 4 slots, orden fijo, validada contra
-     el fondo navy con scripts/validate_palette.js del skill dataviz
-     (banda de luminosidad, piso CVD y contraste >= 3:1 todos en PASS con
-     este orden). --serie-3 es un paso más oscuro del dorado de marca: el
-     dorado real (--gold) es demasiado claro para usarse como marca de
-     dato sobre este fondo. No reordenar sin volver a correr el validador. */
+  /* Paleta categórica del dashboard — 4 slots, orden fijo. */
   --serie-1: #c5603c; /* terracota — igual a --terracota */
   --serie-2: #2e9e8f; /* verde-azulado */
   --serie-3: #b08d28; /* dorado (paso oscuro) */
@@ -23,9 +38,9 @@
 
   --radio: 10px;
   --radio-chico: 7px;
-  --sombra-suave: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --sombra: 0 4px 16px rgba(0, 0, 0, 0.32);
-  --sombra-flotante: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --sombra-suave: 0 1px 2px rgba(60, 40, 10, 0.12);
+  --sombra: 0 4px 16px rgba(60, 40, 10, 0.12);
+  --sombra-flotante: 0 12px 32px rgba(60, 40, 10, 0.22);
   --veloz: 0.14s ease;
 }
 
@@ -47,7 +62,7 @@ h1, h2, h3 {
   text-transform: uppercase;
 }
 
-/* Scrollbar consistente con el tema oscuro (Chrome/Edge/Safari + Firefox). */
+/* Scrollbar consistente con el tema (Chrome/Edge/Safari + Firefox). */
 * {
   scrollbar-color: var(--border) transparent;
   scrollbar-width: thin;
@@ -117,13 +132,13 @@ input, textarea {
   margin-bottom: 12px;
   border-radius: var(--radio-chico);
   border: 1px solid var(--border);
-  background: var(--navy);
+  background: var(--campo);
   color: var(--text);
   transition: border-color var(--veloz), box-shadow var(--veloz);
 }
 
 input:hover, textarea:hover {
-  border-color: #364766;
+  border-color: #cdb88a;
 }
 
 input:focus, textarea:focus, select:focus {
@@ -168,9 +183,9 @@ button:disabled {
 }
 
 .error {
-  color: #ff8080;
-  background: rgba(138, 44, 44, 0.15);
-  border: 1px solid rgba(255, 128, 128, 0.35);
+  color: var(--peligro);
+  background: var(--peligro-fondo);
+  border: 1px solid rgba(179, 38, 30, 0.35);
   border-radius: var(--radio-chico);
   padding: 8px 12px;
   font-size: 0.9em;
@@ -244,12 +259,12 @@ button:disabled {
 .nav button:hover:not(:disabled):not(.activo) {
   color: var(--text);
   filter: none;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(60, 40, 10, 0.06);
 }
 
 .nav button.activo {
   background: var(--navy);
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .nav button.activo:hover {
@@ -280,17 +295,17 @@ button:disabled {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #6b7385;
+  background: #b8ab8f;
 }
 
 .nav-vivo.conectado .nav-vivo-punto {
-  background: #3ecf8e;
+  background: #2e9e5e;
   box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.6);
   animation: latido 2s infinite;
 }
 
 .nav-vivo.conectado {
-  color: #8fe3bd;
+  color: var(--ok);
 }
 
 .nav .nav-vivo + .salir {
@@ -413,12 +428,12 @@ button:disabled {
 
 .boton-secundario:hover:not(:disabled) {
   border-color: var(--color-sucursal);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(60, 40, 10, 0.05);
   filter: none;
 }
 
 .boton-peligro {
-  background: #8a2c2c;
+  background: var(--peligro);
 }
 
 select {
@@ -427,13 +442,13 @@ select {
   margin-bottom: 12px;
   border-radius: var(--radio-chico);
   border: 1px solid var(--border);
-  background: var(--navy);
+  background: var(--campo);
   color: var(--text);
   transition: border-color var(--veloz), box-shadow var(--veloz);
 }
 
 select:hover {
-  border-color: #364766;
+  border-color: #cdb88a;
 }
 
 table.tabla {
@@ -460,13 +475,13 @@ table.tabla tbody tr {
 }
 
 table.tabla tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(60, 40, 10, 0.04);
 }
 
 .alerta {
-  background: #3a2410;
-  border: 1px solid var(--gold);
-  color: var(--gold);
+  background: var(--aviso-fondo);
+  border: 1px solid #d9b554;
+  color: var(--aviso);
   border-radius: var(--radio-chico);
   padding: 10px 14px;
   margin-bottom: 12px;
@@ -475,9 +490,9 @@ table.tabla tbody tr:hover {
 
 .badge-borrador {
   display: inline-block;
-  background: #3a1414;
-  color: #ff9d9d;
-  border: 1px solid #ff9d9d;
+  background: var(--peligro-fondo);
+  color: var(--peligro);
+  border: 1px solid var(--peligro);
   border-radius: 6px;
   padding: 2px 8px;
   font-size: 0.75em;
@@ -683,7 +698,7 @@ table.tabla tbody tr:hover {
 }
 
 .celda-estado.ok {
-  color: #3ecf8e;
+  color: var(--ok);
 }
 
 /* ── Conversión cotización → factura ─────────────────────────────────── */
@@ -729,9 +744,9 @@ table.tabla tbody tr:hover {
 }
 
 .aviso-ok {
-  background: rgba(62, 207, 142, 0.12);
+  background: var(--ok-fondo);
   border: 1px solid rgba(62, 207, 142, 0.45);
-  color: #8fe3bd;
+  color: var(--ok);
   border-radius: var(--radio-chico);
   padding: 9px 12px;
   margin-bottom: 12px;
@@ -753,14 +768,14 @@ table.tabla tbody tr:hover {
 
 .sello-integridad.ok {
   border-color: rgba(62, 207, 142, 0.5);
-  background: rgba(62, 207, 142, 0.1);
-  color: #8fe3bd;
+  background: var(--ok-fondo);
+  color: var(--ok);
 }
 
 .sello-integridad.alterada {
-  border-color: #ff8080;
-  background: rgba(138, 44, 44, 0.25);
-  color: #ffb3b3;
+  border-color: var(--peligro);
+  background: var(--peligro-fondo);
+  color: var(--peligro);
 }
 
 table.tabla tbody tr.fila-sensible td:first-child {
@@ -879,7 +894,7 @@ table.tabla tbody tr.fila-sensible td:first-child {
 }
 
 .pos-descuento.activo {
-  background: rgba(212, 175, 55, 0.14);
+  background: var(--aviso-fondo);
   border-color: var(--gold);
   color: var(--gold);
 }
@@ -1038,7 +1053,7 @@ table.tabla tbody tr.fila-sensible td:first-child {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 2px rgba(60, 40, 10, 0.08);
 }
 
 .barra-h-fila {
@@ -1164,12 +1179,12 @@ table.tabla tbody tr.fila-sensible td:first-child {
 }
 
 .nav-sucursal-punto {
-  background: var(--navy);
+  background: var(--texto-sobre-color);
 }
 
 .nav-sucursal-nombre,
 .nav-sucursal-select {
-  color: var(--navy);
+  color: var(--texto-sobre-color);
   font-size: 1em;
 }
 
@@ -1184,7 +1199,7 @@ table.tabla tbody tr.fila-sensible td:first-child {
 }
 
 .nav-sucursal-select:focus {
-  outline-color: var(--navy);
+  outline-color: var(--texto-sobre-color);
 }
 
 .panel,
@@ -1199,7 +1214,7 @@ table.tabla tbody tr.fila-sensible td:first-child {
 
 .panel h2,
 .overlay .tarjeta h2 {
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 table.tabla th {
@@ -1211,7 +1226,7 @@ table.tabla th {
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  color: var(--navy);
+  color: var(--texto-sobre-color);
   padding: 10px 12px 8px;
 }
 
@@ -1231,7 +1246,7 @@ table.tabla th {
 .pos-categoria.activa {
   background: var(--color-sucursal);
   border-color: var(--color-sucursal);
-  color: var(--navy);
+  color: var(--texto-sobre-color);
 }
 
 .pos-categoria:hover:not(.activa),
@@ -1241,12 +1256,12 @@ table.tabla th {
 }
 
 .pos-totales-fila.total span:last-child {
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .pos-toast {
   background: var(--color-sucursal);
-  color: var(--navy);
+  color: var(--texto-sobre-color);
 }
 
 .kpi-tile:hover {
@@ -1271,14 +1286,14 @@ table.tabla th {
   padding: 0;
   border-radius: 50%;
   border: 2px solid transparent;
-  color: var(--navy);
+  color: var(--texto-sobre-color);
   font-weight: 800;
   box-shadow: none;
 }
 
 .muestra-color.elegida {
   border-color: var(--text);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 3px rgba(60, 40, 10, 0.18);
 }
 
 .muestra-color:disabled {
@@ -1423,7 +1438,7 @@ table.tabla th {
   font-size: 1.35em;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .cierre-fila {
@@ -1475,7 +1490,7 @@ table.tabla th {
   align-items: center;
   border: 1px solid var(--border);
   border-radius: var(--radio-chico);
-  background: var(--navy);
+  background: var(--campo);
   transition: border-color var(--veloz), box-shadow var(--veloz);
 }
 
@@ -1526,23 +1541,23 @@ table.tabla th {
 }
 
 .chip-dif-cuadra {
-  background: rgba(46, 158, 94, 0.18);
-  color: #6fdc9b;
+  background: var(--ok-fondo);
+  color: var(--ok);
 }
 
 .chip-dif-centavos {
-  background: rgba(212, 175, 55, 0.16);
-  color: #e6c65a;
+  background: var(--aviso-fondo);
+  color: var(--aviso);
 }
 
 .chip-dif-faltante {
-  background: rgba(220, 70, 60, 0.18);
-  color: #ff8a80;
+  background: var(--peligro-fondo);
+  color: var(--peligro);
 }
 
 .chip-dif-sobrante {
-  background: rgba(61, 159, 214, 0.18);
-  color: #8ccaf0;
+  background: var(--info-fondo);
+  color: var(--info);
 }
 
 .chip-dif-nd {
@@ -1581,7 +1596,7 @@ table.tabla th {
   padding: 14px 24px;
   font-size: 1.1em;
   background: var(--color-sucursal);
-  color: var(--navy);
+  color: var(--texto-sobre-color);
   font-weight: 800;
 }
 
@@ -1693,7 +1708,7 @@ table.tabla th {
 }
 
 .cai-tarjeta-borrador {
-  background: repeating-linear-gradient(-45deg, var(--navy), var(--navy) 14px, rgba(212, 175, 55, 0.035) 14px, rgba(212, 175, 55, 0.035) 28px);
+  background: repeating-linear-gradient(-45deg, var(--navy), var(--navy) 14px, rgba(154, 116, 16, 0.07) 14px, rgba(154, 116, 16, 0.07) 28px);
 }
 
 .cai-tarjeta-encabezado {
@@ -1714,13 +1729,13 @@ table.tabla th {
 }
 
 .cai-estado-borrador {
-  background: rgba(212, 175, 55, 0.16);
-  color: #e6c65a;
+  background: var(--aviso-fondo);
+  color: var(--aviso);
 }
 
 .cai-estado-real {
-  background: rgba(46, 158, 94, 0.18);
-  color: #6fdc9b;
+  background: var(--ok-fondo);
+  color: var(--ok);
 }
 
 .cai-datos {
@@ -1793,7 +1808,7 @@ table.tabla th {
 .cai-faltan {
   margin: 0;
   padding-left: 18px;
-  color: #e6c65a;
+  color: var(--aviso);
   font-size: 0.82em;
 }
 
@@ -1856,7 +1871,7 @@ table.tabla th {
 
 .rep-pestanas button.activa {
   background: var(--color-sucursal);
-  color: var(--navy);
+  color: var(--texto-sobre-color);
 }
 
 .rep-contador {
@@ -1920,18 +1935,18 @@ table.tabla th {
 }
 
 .rep-var-buena {
-  background: rgba(46, 158, 94, 0.18);
-  color: #6fdc9b;
+  background: var(--ok-fondo);
+  color: var(--ok);
 }
 
 .rep-var-mala {
-  background: rgba(220, 70, 60, 0.18);
-  color: #ff8a80;
+  background: var(--peligro-fondo);
+  color: var(--peligro);
 }
 
 .rep-var-neutra {
-  background: rgba(212, 175, 55, 0.16);
-  color: #e6c65a;
+  background: var(--aviso-fondo);
+  color: var(--aviso);
 }
 
 .rep-seccion-titulo {
@@ -1985,7 +2000,7 @@ table.tabla th {
 }
 
 .rep-hallazgos li::marker {
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .rep-tabla td.rep-num,
@@ -2007,7 +2022,7 @@ table.tabla th {
 
 .rep-flecha {
   margin-left: 4px;
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .rep-vacio {
@@ -2033,7 +2048,7 @@ table.tabla th {
 }
 
 .rep-alerta {
-  color: #ff8a80;
+  color: var(--peligro);
   font-weight: 700;
 }
 
@@ -2185,13 +2200,13 @@ table.tabla th {
   height: 30px;
   border-radius: 5px;
   text-align: center;
-  color: var(--navy);
+  color: var(--texto-sobre-color);
   font-weight: 800;
 }
 
 .rep-fiscal h3 {
   margin: 0 0 6px;
-  color: var(--color-sucursal);
+  color: var(--color-sucursal-texto);
 }
 
 .rep-fiscal h4 {
@@ -2251,4 +2266,312 @@ table.tabla th {
     margin-bottom: 10px;
     font-size: 12px;
   }
+}
+
+/* ── Descuento por producto en el carrito ────────────────────────────── */
+
+.pos-linea {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.pos-linea .pos-orden-linea {
+  border-bottom: 0;
+}
+
+.pos-linea-con-descuento {
+  background: var(--ok-fondo);
+  border-radius: var(--radio-chico);
+  padding: 2px 6px 6px;
+}
+
+.pos-linea-descuento {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.pos-chip-desc {
+  width: auto;
+  padding: 3px 9px;
+  font-size: 0.75em;
+  font-weight: 600;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+
+.pos-chip-desc.activo {
+  background: var(--color-sucursal);
+  border-color: var(--color-sucursal);
+  color: var(--texto-sobre-color);
+}
+
+.pos-chip-separar {
+  margin-left: auto;
+  border-style: dashed;
+}
+
+/* Aviso de versión nueva de la app */
+.aviso-version {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+  font-weight: 600;
+  font-size: 0.9em;
+  border-bottom: 1px solid #d9b554;
+}
+
+.aviso-version button {
+  width: auto;
+}
+
+/* ── Forma de pago en el listado de facturas ─────────────────────────── */
+.chips-pago {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip-pago {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--navy-elevada);
+  color: var(--text);
+}
+
+.chip-pago.pago-efectivo {
+  background: var(--ok-fondo);
+  color: var(--ok);
+}
+
+.chip-pago.pago-tarjeta {
+  background: var(--info-fondo);
+  color: var(--info);
+}
+
+.chip-pago.pago-transferencia {
+  background: #efe3f7;
+  color: #6a3d8f;
+}
+
+/* ── Antifraude ──────────────────────────────────────────────────────── */
+.nav-contador {
+  display: inline-block;
+  margin-left: 6px;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--peligro);
+  color: #fff;
+  font-size: 0.72em;
+  line-height: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.af-intro {
+  color: var(--text-dim);
+  font-size: 0.88em;
+  max-width: 860px;
+  margin-top: -4px;
+}
+
+.af-titulo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.af-alerta {
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--aviso);
+  border-radius: var(--radio-chico);
+  background: var(--campo);
+  margin-bottom: 8px;
+}
+
+.af-alerta.af-alta {
+  border-left-color: var(--peligro);
+}
+
+.af-alerta.af-baja {
+  border-left-color: var(--info);
+}
+
+.af-alerta.af-revisada {
+  opacity: 0.6;
+}
+
+.af-alerta-fila {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.af-alerta-fila > button {
+  width: auto;
+  flex: none;
+}
+
+.af-alerta-texto {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.af-alerta-texto span {
+  color: var(--text-dim);
+  font-size: 0.8em;
+}
+
+.af-sev {
+  flex: none;
+  text-transform: uppercase;
+  font-size: 0.68em;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.af-sev-alta {
+  background: var(--peligro-fondo);
+  color: var(--peligro);
+}
+
+.af-sev-media {
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+}
+
+.af-sev-baja {
+  background: var(--info-fondo);
+  color: var(--info);
+}
+
+.af-revisada-por {
+  color: var(--ok);
+  font-size: 0.8em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.af-alerta-detalle {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 16px;
+  padding: 4px 14px 12px 14px;
+  font-size: 0.85em;
+}
+
+.af-alerta-detalle div {
+  display: flex;
+  flex-direction: column;
+}
+
+.af-alerta-detalle span {
+  color: var(--text-dim);
+  text-transform: capitalize;
+  font-size: 0.85em;
+}
+
+.af-tabla td {
+  vertical-align: top;
+}
+
+.af-fila-alta td:first-child {
+  box-shadow: inset 4px 0 0 var(--peligro);
+}
+
+.af-fila-media td:first-child {
+  box-shadow: inset 4px 0 0 var(--aviso);
+}
+
+.af-senales {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 260px;
+}
+
+.af-senal {
+  font-size: 0.76em;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.af-senal-alta {
+  background: var(--peligro-fondo);
+  color: var(--peligro);
+}
+
+.af-senal-media {
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+}
+
+.af-senal-baja {
+  background: var(--info-fondo);
+  color: var(--info);
+}
+
+.af-ok {
+  color: var(--ok);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.af-feed {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.af-evento {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.86em;
+}
+
+.af-evento-hora {
+  flex: none;
+  width: 118px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.af-consejos ul {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  line-height: 1.45;
+}
+
+.af-tabla td.rep-num,
+.af-tabla th.rep-num,
+table.tabla td.nowrap {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }

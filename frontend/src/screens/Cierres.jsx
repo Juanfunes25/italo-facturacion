@@ -368,6 +368,11 @@ export default function Cierres({ session, perfil, sucursales, sucursalId }) {
       {resultado ? (
         <div className="panel cierre-resultado">
           <h2>Cierre guardado</h2>
+          {resultado.descuadre && (
+            <div className="error" style={{ fontWeight: 700 }}>
+              ⚠ Descuadre registrado. {resultado.alerta_enviada ? 'Se notificó a los administradores.' : ''}
+            </div>
+          )}
           <p className="cierre-subtitulo">
             Facturas {resultado.factura_desde ?? '—'} a {resultado.factura_hasta ?? '—'} ({resultado.cantidad_facturas ?? 0})
           </p>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { crearAlerta } from '../lib/alertas.js';
 
 export const notasCredito = Router();
 
@@ -53,6 +54,19 @@ notasCredito.post('/', requireRole('admin'), async (req, res) => {
       motivo,
       nota_credito_id: nota.id,
     },
+  });
+
+  // Anular o acreditar dinero de una factura ya cobrada es de los puntos
+  // más sensibles: alerta + correo a los administradores.
+  await crearAlerta(req, {
+    tipo: anulaTotal ? 'venta.anular' : 'venta.nota_credito',
+    severidad: anulaTotal ? 'alta' : 'media',
+    titulo: `${anulaTotal ? 'Factura anulada' : 'Nota de crédito'}: ${venta.numero_factura} por L ${Number(monto).toFixed(2)}`,
+    sucursalId: venta.sucursal_id,
+    entidad: 'venta',
+    entidadId: venta_id,
+    correo: true,
+    detalle: { factura: venta.numero_factura, total_factura: Number(venta.total), monto_acreditado: Number(monto), motivo, autorizo: req.perfil.nombre },
   });
 
   res.status(201).json(nota);

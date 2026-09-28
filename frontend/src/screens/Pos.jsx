@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { calcularTotales, OPCIONES_DESCUENTO } from '../lib/facturacion.js';
+import { calcularTotales, descuentoDeLinea, OPCIONES_DESCUENTO } from '../lib/facturacion.js';
+import { registrarEvento } from '../lib/eventos.js';
 import { colorSucursal, nombreCortoSucursal } from '../lib/coloresSucursal.js';
 import { imprimirTicket, leerConfigImpresora, verPdf } from '../lib/documentos.js';
 import { useCambiosEnVivo } from '../lib/tiempoReal.js';
@@ -110,7 +111,7 @@ function SelectorCliente({ session, clienteId, clienteNombre, clienteExento, onS
           <input placeholder="Nombre" value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)} />
           <input placeholder="RTN (opcional)" value={nuevoRtn} onChange={(e) => setNuevoRtn(e.target.value)} />
           {nuevoRtn && !rtnLuceValido(nuevoRtn) && (
-            <p style={{ color: '#ffb86b', fontSize: '0.8em', marginTop: -8 }}>
+            <p style={{ color: 'var(--aviso)', fontSize: '0.8em', marginTop: -8 }}>
               El RTN hondureño suele tener 13-14 dígitos — revísalo.
             </p>
           )}
@@ -274,6 +275,14 @@ function ModalOrdenesAbiertas({ ordenes, cargando, onSeleccionar, onCerrar }) {
   );
 }
 
+let contadorLineas = 0;
+// Cada línea del carrito tiene su propia clave: el mismo producto puede ir
+// en dos líneas (una con descuento de tercera edad y otra sin descuento).
+function nuevaClave() {
+  contadorLineas += 1;
+  return `l${Date.now().toString(36)}${contadorLineas}`;
+}
+
 export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, onCambiarSucursalId, onCarritoOcupado }) {
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductos] = useState([]);
@@ -281,7 +290,6 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   const [busquedaProducto, setBusquedaProducto] = useState('');
   const [carrito, setCarrito] = useState([]);
   const [cliente, setCliente] = useState(null);
-  const [descuentoPct, setDescuentoPct] = useState(0);
   const [notaInterna, setNotaInterna] = useState('');
   const [ventaId, setVentaId] = useState(null);
   const [mostrarPago, setMostrarPago] = useState(false);
@@ -396,11 +404,12 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     const items = carrito.map((l) => ({
       precio_unitario: l.precio_unitario,
       cantidad: l.cantidad,
-      descuento: 0,
+      descuento_porcentaje: l.descuento_porcentaje ?? 0,
       impuesto_tasa: l.impuesto_tasa,
     }));
-    return calcularTotales(items, cliente, descuentoPct);
-  }, [carrito, cliente, descuentoPct]);
+    return calcularTotales(items, cliente);
+  }, [carrito, cliente]);
+  const hayTerceraEdad = carrito.some((l) => l.descuento_porcentaje === 25);
 
   const requiereRtn = totales.total > UMBRAL_RTN_OBLIGATORIO && !cliente?.rtn;
   const carritoTieneLineasInvalidas = carrito.some(
@@ -426,17 +435,20 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, cliente, sucursalId, descuentoPct, notaInterna]);
+  }, [carrito, cliente, sucursalId, notaInterna]);
 
   async function guardarOrden() {
     const body = {
       sucursal_id: sucursalId,
       cliente_id: cliente?.id ?? null,
-      descuento_porcentaje: descuentoPct,
+      descuento_porcentaje: 0,
       nota_interna: notaInterna || null,
+      // El descuento va por producto: una orden puede tener una persona de
+      // tercera edad y otra que no.
       items: carrito.map((l) => ({
         producto_id: l.producto_id,
         cantidad: l.cantidad,
+        descuento_porcentaje: l.descuento_porcentaje ?? 0,
       })),
     };
     if (body.items.length === 0) return ventaIdRef.current;
@@ -470,18 +482,23 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     if (!producto.precio && producto.precio !== 0) return;
     setResultadoFactura(null);
     setCarrito((actual) => {
-      const existente = actual.find((l) => l.producto_id === producto.id);
+      // Se suma a la línea del mismo producto SIN descuento; si la única
+      // línea existente tiene descuento, la unidad nueva va aparte (no toda
+      // persona de la orden es de tercera edad).
+      const existente = actual.find((l) => l.producto_id === producto.id && !l.descuento_porcentaje);
       if (existente) {
-        return actual.map((l) => (l.producto_id === producto.id ? { ...l, cantidad: l.cantidad + 1 } : l));
+        return actual.map((l) => (l.clave === existente.clave ? { ...l, cantidad: l.cantidad + 1 } : l));
       }
       return [
         ...actual,
         {
+          clave: nuevaClave(),
           producto_id: producto.id,
           nombre: producto.nombre,
           precio_unitario: producto.precio,
           impuesto_tasa: producto.impuesto1_tasa,
           cantidad: 1,
+          descuento_porcentaje: 0,
         },
       ];
     });
@@ -522,21 +539,63 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function cambiarCantidad(producto_id, delta) {
-    setCarrito((actual) =>
-      actual
-        .map((l) => (l.producto_id === producto_id ? { ...l, cantidad: l.cantidad + delta } : l))
-        .filter((l) => l.cantidad > 0)
+  // Quitar productos de una orden ya armada (sobre todo después de que el
+  // cliente vio el total) es una de las formas de cobrar de más sin
+  // facturarlo: cada quitada queda en la bitácora.
+  function registrarQuitado(clave, cantidadQuitada) {
+    const l = carrito.find((x) => x.clave === clave);
+    if (!l || cantidadQuitada <= 0) return;
+    registrarEvento(
+      'orden.quitar_producto',
+      {
+        producto: l.nombre,
+        cantidad: cantidadQuitada,
+        monto: Math.round(l.precio_unitario * cantidadQuitada * 100) / 100,
+        orden_id: ventaIdRef.current ?? '',
+        quedan_en_orden: carrito.length,
+      },
+      sucursalId
     );
   }
 
-  function establecerCantidad(producto_id, valor) {
-    const cantidad = Math.max(1, Math.floor(Number(valor) || 1));
-    setCarrito((actual) => actual.map((l) => (l.producto_id === producto_id ? { ...l, cantidad } : l)));
+  function cambiarCantidad(clave, delta) {
+    if (delta < 0) registrarQuitado(clave, -delta);
+    setCarrito((actual) =>
+      actual.map((l) => (l.clave === clave ? { ...l, cantidad: l.cantidad + delta } : l)).filter((l) => l.cantidad > 0)
+    );
   }
 
-  function quitarLinea(producto_id) {
-    setCarrito((actual) => actual.filter((l) => l.producto_id !== producto_id));
+  function establecerCantidad(clave, valor) {
+    const cantidad = Math.max(1, Math.floor(Number(valor) || 1));
+    const anterior = carrito.find((x) => x.clave === clave)?.cantidad ?? cantidad;
+    if (cantidad < anterior) registrarQuitado(clave, anterior - cantidad);
+    setCarrito((actual) => actual.map((l) => (l.clave === clave ? { ...l, cantidad } : l)));
+  }
+
+  function quitarLinea(clave) {
+    registrarQuitado(clave, carrito.find((x) => x.clave === clave)?.cantidad ?? 0);
+    setCarrito((actual) => actual.filter((l) => l.clave !== clave));
+  }
+
+  function fijarDescuentoLinea(clave, porcentaje) {
+    const l = carrito.find((x) => x.clave === clave);
+    if (l && porcentaje > 0) {
+      registrarEvento('orden.descuento', { producto: l.nombre, cantidad: l.cantidad, porcentaje }, sucursalId);
+    }
+    setCarrito((actual) => actual.map((l) => (l.clave === clave ? { ...l, descuento_porcentaje: porcentaje } : l)));
+  }
+
+  // "2 gelatos, uno para un adulto mayor": saca 1 unidad a su propia línea
+  // para ponerle el descuento sólo a esa.
+  function separarUnidad(clave) {
+    setCarrito((actual) => {
+      const i = actual.findIndex((l) => l.clave === clave);
+      if (i < 0 || actual[i].cantidad < 2) return actual;
+      const copia = [...actual];
+      copia[i] = { ...copia[i], cantidad: copia[i].cantidad - 1 };
+      copia.splice(i + 1, 0, { ...actual[i], clave: nuevaClave(), cantidad: 1, descuento_porcentaje: 0 });
+      return copia;
+    });
   }
 
   async function nuevaOrden({ confirmar = true } = {}) {
@@ -550,7 +609,6 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     fijarVentaId(null);
     setCarrito([]);
     setCliente(null);
-    setDescuentoPct(0);
     setNotaInterna('');
     setResultadoFactura(null);
     setError('');
@@ -584,9 +642,10 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       descartadaRef.current = false;
       fijarVentaId(detalle.id);
       setCliente(detalle.clientes?.es_consumidor_final ? null : detalle.clientes);
-      setDescuentoPct(Number(detalle.descuento_porcentaje ?? 0));
       setCarrito(
         (detalle.detalle || []).map((d) => ({
+          clave: nuevaClave(),
+          descuento_porcentaje: Number(d.descuento_porcentaje ?? 0),
           producto_id: d.producto_id,
           nombre: d.nombre_producto,
           precio_unitario: Number(d.precio_unitario),
@@ -651,8 +710,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       setMostrarPago(false);
       setCarrito([]);
       setCliente(null);
-      setDescuentoPct(0);
-      setNotaInterna('');
+        setNotaInterna('');
       fijarVentaId(null);
 
       if (leerConfigImpresora().autoImprimir) imprimir(venta.id);
@@ -812,54 +870,70 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           onSeleccionar={setCliente}
         />
 
-        <div style={{ maxHeight: '26vh', overflowY: 'auto' }}>
+        <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
           {carrito.length === 0 && <p style={{ color: 'var(--text-dim)' }}>Sin productos todavía.</p>}
-          {carrito.map((l) => (
-            <div key={l.producto_id} className="pos-orden-linea">
-              <span>
-                {l.nombre}
-                <br />
-                <span style={{ color: 'var(--text-dim)' }}>
-                  {fmtL(l.precio_unitario)} c/u · {fmtL(l.precio_unitario * l.cantidad)}
-                </span>
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <button className="boton-secundario" onClick={() => cambiarCantidad(l.producto_id, -1)}>
-                  −
-                </button>
-                <input
-                  type="number"
-                  value={l.cantidad}
-                  onChange={(e) => establecerCantidad(l.producto_id, e.target.value)}
-                  style={{ width: 44, textAlign: 'center', marginBottom: 0, padding: '4px' }}
-                />
-                <button className="boton-secundario" onClick={() => cambiarCantidad(l.producto_id, 1)}>
-                  +
-                </button>
-                <button className="boton-secundario" title="Quitar" onClick={() => quitarLinea(l.producto_id)}>
-                  🗑
-                </button>
-              </span>
-            </div>
-          ))}
+          {carrito.map((l) => {
+            const bruto = l.precio_unitario * l.cantidad;
+            const desc = descuentoDeLinea(l.precio_unitario, l.cantidad, l.descuento_porcentaje);
+            return (
+              <div key={l.clave} className={`pos-linea${l.descuento_porcentaje ? ' pos-linea-con-descuento' : ''}`}>
+                <div className="pos-orden-linea">
+                  <span>
+                    {l.nombre}
+                    <br />
+                    <span style={{ color: 'var(--text-dim)' }}>
+                      {fmtL(l.precio_unitario)} c/u ·{' '}
+                      {desc > 0 ? (
+                        <>
+                          <s>{fmtL(bruto)}</s> <strong style={{ color: 'var(--ok)' }}>{fmtL(bruto - desc)}</strong>
+                        </>
+                      ) : (
+                        fmtL(bruto)
+                      )}
+                    </span>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button className="boton-secundario" onClick={() => cambiarCantidad(l.clave, -1)}>
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      value={l.cantidad}
+                      onChange={(e) => establecerCantidad(l.clave, e.target.value)}
+                      style={{ width: 44, textAlign: 'center', marginBottom: 0, padding: '4px' }}
+                    />
+                    <button className="boton-secundario" onClick={() => cambiarCantidad(l.clave, 1)}>
+                      +
+                    </button>
+                    <button className="boton-secundario" title="Quitar" onClick={() => quitarLinea(l.clave)}>
+                      🗑
+                    </button>
+                  </span>
+                </div>
+                <div className="pos-linea-descuento" role="radiogroup" aria-label={`Descuento de ${l.nombre}`}>
+                  {OPCIONES_DESCUENTO.map((o) => (
+                    <button
+                      key={o.porcentaje}
+                      role="radio"
+                      aria-checked={(l.descuento_porcentaje ?? 0) === o.porcentaje}
+                      className={`pos-chip-desc${(l.descuento_porcentaje ?? 0) === o.porcentaje ? ' activo' : ''}`}
+                      onClick={() => fijarDescuentoLinea(l.clave, o.porcentaje)}
+                    >
+                      {o.corta}
+                    </button>
+                  ))}
+                  {l.cantidad > 1 && (
+                    <button className="pos-chip-desc pos-chip-separar" title="Separar una unidad para darle otro descuento" onClick={() => separarUnidad(l.clave)}>
+                      ÷ Separar 1
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="pos-descuentos" role="radiogroup" aria-label="Descuento">
-          {OPCIONES_DESCUENTO.map((o) => (
-            <button
-              key={o.porcentaje}
-              role="radio"
-              aria-checked={descuentoPct === o.porcentaje}
-              className={`pos-descuento ${descuentoPct === o.porcentaje ? 'activo' : ''}`}
-              onClick={() => setDescuentoPct(o.porcentaje)}
-            >
-              {o.etiqueta}
-            </button>
-          ))}
-        </div>
-        {descuentoPct === 25 && (
-          <p className="pos-nota-descuento">Verifica el carné de adulto mayor antes de cobrar.</p>
-        )}
+        {hayTerceraEdad && <p className="pos-nota-descuento">Verifica el carné de adulto mayor antes de cobrar.</p>}
         <input
           placeholder="Nota interna (no sale en la factura)"
           value={notaInterna}
@@ -870,12 +944,12 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           <span>Sub-Total</span>
           <span>{fmtL(totales.subtotal_bruto)}</span>
         </div>
-        {totales.descuento > 0 && (
-          <div className="pos-totales-fila">
-            <span>Descuento {descuentoPct}%{descuentoPct === 25 ? ' (3ra edad)' : ''}</span>
-            <span>-{fmtL(totales.descuento)}</span>
+        {Object.entries(totales.descuentos_por_porcentaje).map(([pct, monto]) => (
+          <div className="pos-totales-fila" key={pct}>
+            <span>Descuento {pct}%{Number(pct) === 25 ? ' (3ra edad)' : ''}</span>
+            <span>-{fmtL(monto)}</span>
           </div>
-        )}
+        ))}
         <div className="pos-totales-fila">
           <span>ISV incluido</span>
           <span>{fmtL(totales.isv_total)}</span>
@@ -885,7 +959,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           <span>{fmtL(totales.total)}</span>
         </div>
         {requiereRtn && (
-          <p style={{ color: '#ffb86b', fontSize: '0.82em' }}>
+          <p style={{ color: 'var(--aviso)', fontSize: '0.82em' }}>
             Se necesita RTN del cliente para cobrar (venta mayor a L{UMBRAL_RTN_OBLIGATORIO.toLocaleString('es-HN')}).
           </p>
         )}
