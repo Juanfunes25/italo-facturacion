@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { vigilarDispositivo } from '../lib/antifraude.js';
 
 // Verifica el JWT de Supabase Auth (enviado por el frontend en Authorization:
 // Bearer <token>) y adjunta el perfil (sucursal, rol, flags) a req.perfil.
@@ -26,5 +27,7 @@ export async function requireAuth(req, res, next) {
   }
 
   req.perfil = perfil;
+  // Dispositivo nuevo / uso simultáneo: nunca frena la petición.
+  vigilarDispositivo(req).catch(() => {});
   next();
 }

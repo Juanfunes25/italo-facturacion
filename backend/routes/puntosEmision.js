@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { crearAlerta } from '../lib/alertas.js';
 
 export const puntosEmision = Router();
 
@@ -180,6 +181,22 @@ puntosEmision.put('/:id', requireRole('admin'), async (req, res) => {
         entidadId: data.id,
         sucursalId: data.sucursal_id,
         detalle: { cambios },
+      });
+      // Mover el correlativo hacia atrás permitiría repetir números de
+      // factura; cualquier cambio fiscal se avisa por correo.
+      const resumen = Object.entries(cambios)
+        .map(([k, c]) => `${k}: ${c.antes ?? '—'} → ${c.despues ?? '—'}`)
+        .join(' · ');
+      const retroceso = cambios.correlativo_actual && Number(cambios.correlativo_actual.despues) < Number(cambios.correlativo_actual.antes);
+      await crearAlerta(req, {
+        tipo: 'cai.cambio',
+        severidad: 'alta',
+        titulo: `${retroceso ? 'Correlativo movido HACIA ATRÁS' : 'Cambio en CAI / correlativo'} (${req.perfil.nombre})`,
+        sucursalId: data.sucursal_id,
+        entidad: 'punto_emision',
+        entidadId: data.id,
+        correo: true,
+        detalle: { cambios: resumen, por: req.perfil.nombre },
       });
     }
   }

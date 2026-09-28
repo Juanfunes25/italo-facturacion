@@ -3465,3 +3465,299 @@ table.tabla tbody tr:hover {
     padding-bottom: 2px;
   }
 }
+
+/* ── Antifraude avanzado ─────────────────────────────────────────────── */
+
+.pos-tercera-edad {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  padding: 10px;
+  margin: 6px 0 10px;
+  border-radius: 12px;
+  background: var(--primario-suave);
+  border: 1px solid color-mix(in srgb, var(--primario) 25%, transparent);
+}
+
+.pos-tercera-edad.incompleto {
+  background: var(--aviso-fondo);
+  border-color: color-mix(in srgb, var(--aviso) 35%, transparent);
+}
+
+.pos-tercera-edad input {
+  margin: 0;
+}
+
+.pos-tercera-edad-titulo,
+.pos-tercera-edad small {
+  grid-column: 1 / -1;
+  font-size: 0.78em;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.pos-tercera-edad.incompleto small {
+  color: var(--aviso);
+}
+
+.bloqueo {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(10, 14, 9, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.bloqueo-tarjeta {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  border-radius: 20px;
+  background: var(--navy-panel);
+  box-shadow: var(--sombra-flotante);
+  text-align: center;
+}
+
+.bloqueo-tarjeta input {
+  margin: 0;
+}
+
+.bloqueo-tarjeta h2 {
+  margin: 4px 0 0;
+}
+
+.bloqueo-tarjeta p {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+}
+
+.bloqueo-logo {
+  align-self: center;
+  display: inline-flex;
+  padding: 12px;
+  border-radius: 16px;
+  background: #141a12;
+}
+
+.notif-pila {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, calc(100vw - 36px));
+}
+
+.notif {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--navy-panel);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--aviso);
+  box-shadow: var(--sombra-flotante);
+  animation: entra-toast 0.25s ease;
+}
+
+.notif-alta {
+  border-left-color: var(--peligro);
+}
+
+.notif p {
+  margin: 4px 0 0;
+  font-size: 0.88em;
+  color: var(--text-dim);
+}
+
+.notif-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notif-acciones button {
+  width: auto;
+}
+
+.af-estado {
+  width: auto;
+  flex: none;
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 0.8em;
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+.af-estado-pendiente {
+  background: var(--aviso-fondo);
+  color: var(--aviso);
+}
+
+.af-estado-investigando {
+  background: var(--info-fondo);
+  color: var(--info);
+}
+
+.af-estado-resuelta {
+  background: var(--ok-fondo);
+  color: var(--ok);
+}
+
+.af-estado-falso_positivo {
+  background: var(--navy-elevada);
+  color: var(--text-dim);
+}
+
+.af-mini {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+  width: 44px;
+}
+
+.af-mini span {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--peligro);
+}
+
+.af-resumen-turno {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.af-resumen-turno > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--navy-elevada);
+}
+
+.af-resumen-turno span {
+  color: var(--text-dim);
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.af-resumen-turno strong {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.15em;
+}
+
+.af-linea {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.af-linea li {
+  display: grid;
+  grid-template-columns: 82px 14px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.9em;
+  border-bottom: 1px dashed var(--border);
+}
+
+.af-linea-hora {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.af-linea-punto {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--salvia);
+  border: 2px solid var(--primario);
+}
+
+.af-linea-sensible {
+  background: var(--peligro-fondo);
+  border-radius: 8px;
+}
+
+.af-linea-sensible .af-linea-punto {
+  background: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.af-reglas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.af-reglas fieldset {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px 14px;
+  margin: 0;
+}
+
+.af-reglas legend {
+  padding: 0 6px;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 600;
+}
+
+.af-regla {
+  display: grid;
+  grid-template-columns: 1fr 90px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.88em;
+}
+
+.af-regla input {
+  margin: 0;
+}
+
+.af-regla-bool {
+  grid-template-columns: 20px 1fr;
+}
+
+.af-regla-bool input {
+  width: auto;
+}
+
+.toolbar .rep-check input {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.af-linea li {
+  grid-template-columns: 104px 14px 1fr;
+}
+
+/* El panel de la orden se desplaza por dentro: los botones de cobro
+   siempre quedan alcanzables aunque la orden sea larga. */
+.pos-grid > .pos-panel {
+  overflow-y: auto;
+  min-height: 0;
+}

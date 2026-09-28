@@ -3,12 +3,13 @@ import { api } from '../api.js';
 import { calcularTotales, descuentoDeLinea, OPCIONES_DESCUENTO } from '../lib/facturacion.js';
 import { registrarEvento } from '../lib/eventos.js';
 import { colorSucursal, nombreCortoSucursal } from '../lib/coloresSucursal.js';
-import { imprimirTicket, leerConfigImpresora, verPdf } from '../lib/documentos.js';
+import { imprimirTicket, leerConfigImpresora, pedirMotivo, verPdf } from '../lib/documentos.js';
 import { useCambiosEnVivo } from '../lib/tiempoReal.js';
 
 const CONSUMIDOR_FINAL_NOMBRE = 'Consumidor Final';
 const UMBRAL_RTN_OBLIGATORIO = 10000;
 const DENOMINACIONES_EFECTIVO = [20, 50, 100, 200, 500, 1000];
+const MOTIVOS_DESCARTE = ['El cliente se arrepintió', 'Error al digitar la orden', 'Orden duplicada', 'Orden de prueba'];
 
 function fmtL(n) {
   return `L ${Number(n || 0).toLocaleString('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -291,6 +292,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   const [carrito, setCarrito] = useState([]);
   const [cliente, setCliente] = useState(null);
   const [notaInterna, setNotaInterna] = useState('');
+  const [terceraEdad, setTerceraEdad] = useState({ nombre: '', identidad: '' });
   const [ventaId, setVentaId] = useState(null);
   const [mostrarPago, setMostrarPago] = useState(false);
   const [guardandoPago, setGuardandoPago] = useState(false);
@@ -410,6 +412,10 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     return calcularTotales(items, cliente);
   }, [carrito, cliente]);
   const hayTerceraEdad = carrito.some((l) => l.descuento_porcentaje === 25);
+  // Para el 25% de tercera edad se exige el nombre y el No. de identidad o
+  // carné: sin eso el descuento se podía aplicar a cualquiera.
+  const faltaCarne =
+    hayTerceraEdad && (!terceraEdad.nombre.trim() || terceraEdad.identidad.replace(/[^0-9A-Za-z]/g, '').length < 5);
 
   const requiereRtn = totales.total > UMBRAL_RTN_OBLIGATORIO && !cliente?.rtn;
   const carritoTieneLineasInvalidas = carrito.some(
@@ -417,7 +423,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   );
   const sinPuntoEmision = estadoPuntoEmision?.error;
   const cobroBloqueado =
-    carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago;
+    carrito.length === 0 || carritoTieneLineasInvalidas || sinPuntoEmision || requiereRtn || guardandoPago || faltaCarne;
 
   // Auto-guarda la orden como "abierta" cada vez que cambia — así "Órdenes
   // Abiertas" siempre puede recuperarla. Si falla por red, reintenta una vez.
@@ -435,7 +441,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, cliente, sucursalId, notaInterna]);
+  }, [carrito, cliente, sucursalId, notaInterna, terceraEdad]);
 
   async function guardarOrden() {
     const body = {
@@ -443,6 +449,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       cliente_id: cliente?.id ?? null,
       descuento_porcentaje: 0,
       nota_interna: notaInterna || null,
+      tercera_edad: carrito.some((l) => l.descuento_porcentaje === 25) ? terceraEdad : { nombre: '', identidad: '' },
       // El descuento va por producto: una orden puede tener una persona de
       // tercera edad y otra que no.
       items: carrito.map((l) => ({
@@ -599,8 +606,13 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
   }
 
   async function nuevaOrden({ confirmar = true } = {}) {
+    // Descartar una orden armada exige motivo: queda en la bitácora y, si
+    // el monto es alto, genera alerta (es la forma clásica de cobrar sin
+    // facturar).
+    let motivo = '';
     if (confirmar && carrito.length > 0) {
-      if (!window.confirm('¿Descartar esta orden? Los productos agregados se van a perder.')) return;
+      motivo = pedirMotivo('¿Por qué se descarta esta orden? Los productos se van a perder.', MOTIVOS_DESCARTE);
+      if (!motivo) return;
     }
     // Marca la orden como descartada ANTES de limpiar, para que un
     // autoguardado en cola no la resucite después de borrada.
@@ -610,10 +622,11 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
     setCarrito([]);
     setCliente(null);
     setNotaInterna('');
+    setTerceraEdad({ nombre: '', identidad: '' });
     setResultadoFactura(null);
     setError('');
     if (idAEliminar) {
-      await api.del(`/ventas/${idAEliminar}`, session).catch(() => {});
+      await api.del(`/ventas/${idAEliminar}?motivo=${encodeURIComponent(motivo || 'Orden vacía')}`, session).catch(() => {});
     }
     buscadorRef.current?.focus();
   }
@@ -642,6 +655,7 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       descartadaRef.current = false;
       fijarVentaId(detalle.id);
       setCliente(detalle.clientes?.es_consumidor_final ? null : detalle.clientes);
+      setTerceraEdad({ nombre: detalle.tercera_edad_nombre ?? '', identidad: detalle.tercera_edad_identidad ?? '' });
       setCarrito(
         (detalle.detalle || []).map((d) => ({
           clave: nuevaClave(),
@@ -710,7 +724,8 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
       setMostrarPago(false);
       setCarrito([]);
       setCliente(null);
-        setNotaInterna('');
+      setNotaInterna('');
+      setTerceraEdad({ nombre: '', identidad: '' });
       fijarVentaId(null);
 
       if (leerConfigImpresora().autoImprimir) imprimir(venta.id);
@@ -933,7 +948,23 @@ export default function Pos({ session, perfil, sucursales, onIrA, sucursalId, on
           })}
         </div>
 
-        {hayTerceraEdad && <p className="pos-nota-descuento">Verifica el carné de adulto mayor antes de cobrar.</p>}
+        {hayTerceraEdad && (
+          <div className={`pos-tercera-edad${faltaCarne ? ' incompleto' : ''}`}>
+            <span className="pos-tercera-edad-titulo">Descuento 3ª edad — datos del carné</span>
+            <input
+              placeholder="Nombre completo"
+              value={terceraEdad.nombre}
+              onChange={(e) => setTerceraEdad((t) => ({ ...t, nombre: e.target.value }))}
+            />
+            <input
+              placeholder="No. identidad / carné"
+              inputMode="numeric"
+              value={terceraEdad.identidad}
+              onChange={(e) => setTerceraEdad((t) => ({ ...t, identidad: e.target.value }))}
+            />
+            {faltaCarne && <small>Obligatorio para cobrar con el 25%.</small>}
+          </div>
+        )}
         <input
           placeholder="Nota interna (no sale en la factura)"
           value={notaInterna}

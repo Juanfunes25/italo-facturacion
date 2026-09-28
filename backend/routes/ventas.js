@@ -10,6 +10,8 @@ import { generarPdfFacturaBuffer } from '../lib/pdf.js';
 import { enviarFacturaCliente } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 import { crearAlerta } from '../lib/alertas.js';
+import { normalizarIdentidad, revisarDobleFactura, revisarTerceraEdad } from '../lib/antifraude.js';
+import { obtenerReglas } from '../lib/reglas.js';
 import { textoSeguroFiltro } from '../lib/consultas.js';
 import { filtrarRango } from '../lib/fechas.js';
 
@@ -135,6 +137,15 @@ function resumenItems(lineas) {
   );
 }
 
+// Quién recibe el descuento de tercera edad (nombre + No. de identidad o
+// carné). Se guarda en la venta y se exige al cobrar.
+function datosTerceraEdad(body) {
+  const te = body?.tercera_edad ?? {};
+  const identidad = normalizarIdentidad(te.identidad);
+  const nombre = String(te.nombre ?? '').trim().slice(0, 120);
+  return { tercera_edad_identidad: identidad || null, tercera_edad_nombre: nombre || null };
+}
+
 async function calcularOrden(req, { cliente_id, items, descuento_porcentaje }) {
   const porcentajeGeneral = validarPorcentaje(descuento_porcentaje);
   const cliente = await obtenerCliente(cliente_id);
@@ -177,6 +188,7 @@ ventas.post('/', async (req, res) => {
         descuento_porcentaje: porcentaje,
         isv_total: totales.isv_total,
         total: totales.total,
+        ...datosTerceraEdad(req.body),
       })
       .select()
       .single();
@@ -240,6 +252,7 @@ ventas.put('/:id', async (req, res) => {
         descuento_porcentaje: porcentaje,
         isv_total: totales.isv_total,
         total: totales.total,
+        ...datosTerceraEdad(req.body),
       })
       .eq('id', req.params.id)
       .select()
@@ -369,6 +382,11 @@ ventas.delete('/:id', async (req, res) => {
   if (venta.estado !== 'abierta') {
     return res.status(409).json({ error: 'Sólo se pueden descartar órdenes abiertas' });
   }
+  const reglas = await obtenerReglas();
+  const motivo = String(req.query.motivo ?? '').trim().slice(0, 200);
+  if (reglas.exigir_motivo_descarte && Number(venta.total) > 0 && !motivo) {
+    return res.status(400).json({ error: 'Indica el motivo para descartar la orden' });
+  }
   await db.from('detalle_venta').delete().eq('venta_id', req.params.id);
   await db.from('ventas').delete().eq('id', req.params.id);
 
@@ -384,11 +402,12 @@ ventas.delete('/:id', async (req, res) => {
       total: Number(venta.total),
       cliente: venta.clientes?.nombre ?? 'Consumidor Final',
       items: resumenItems(venta.detalle ?? []),
+      motivo: motivo || null,
     },
   });
   // Descartar una orden ya armada es la forma clásica de cobrar sin
   // facturar: si pasa de L 150 queda como alerta para revisar.
-  if (Number(venta.total) >= 150) {
+  if (Number(venta.total) >= reglas.monto_alerta_descarte) {
     await crearAlerta(req, {
       tipo: 'venta.descartar_orden',
       severidad: Number(venta.total) >= 500 ? 'alta' : 'media',
@@ -396,7 +415,7 @@ ventas.delete('/:id', async (req, res) => {
       sucursalId: venta.sucursal_id,
       entidad: 'venta',
       entidadId: venta.id,
-      detalle: { orden: venta.numero_orden, total: Number(venta.total), productos: resumenItems(venta.detalle ?? []).join(', ') },
+      detalle: { orden: venta.numero_orden, total: Number(venta.total), motivo: motivo || '(sin motivo)', productos: resumenItems(venta.detalle ?? []).join(', ') },
     });
   }
   res.status(204).end();
@@ -434,6 +453,14 @@ export async function facturarVenta(req, ventaId, { pagos, efectivo_recibido, or
       new Error(`Se requiere el RTN del cliente para ventas mayores a L${UMBRAL_RTN_OBLIGATORIO.toLocaleString('es-HN')}`),
       { status: 400 }
     );
+  }
+
+  const reglas = await obtenerReglas();
+  if (reglas.exigir_carne_tercera_edad) {
+    const { data: lineas25 } = await db.from('detalle_venta').select('id').eq('venta_id', venta.id).eq('descuento_porcentaje', 25).limit(1);
+    if (lineas25?.length && (!venta.tercera_edad_identidad || String(venta.tercera_edad_identidad).length < 5 || !venta.tercera_edad_nombre)) {
+      throw Object.assign(new Error('Para el descuento de tercera edad escribe el nombre y el No. de identidad o carné del adulto mayor'), { status: 400 });
+    }
   }
 
   const totalPagado = round2(pagos.reduce((s, p) => s + Number(p.monto), 0));
@@ -488,6 +515,14 @@ export async function facturarVenta(req, ventaId, { pagos, efectivo_recibido, or
       borrador: puntoEmision?.es_borrador ?? true,
     },
   });
+
+  // Detecciones antifraude posteriores al cobro (no frenan la venta).
+  revisarDobleFactura(req, { ...ventaFinal, sucursal_id: venta.sucursal_id }).catch((e) => console.error('[antifraude] doble', e.message));
+  if (venta.tercera_edad_identidad) {
+    revisarTerceraEdad(req, { ...ventaFinal, sucursal_id: venta.sucursal_id, tercera_edad_identidad: venta.tercera_edad_identidad, tercera_edad_nombre: venta.tercera_edad_nombre }).catch((e) =>
+      console.error('[antifraude] tercera edad', e.message)
+    );
+  }
 
   // Correo con el PDF adjunto si el cliente tiene correo — no bloquea la
   // respuesta del cobro. El resultado se guarda en la venta para poder

@@ -22,6 +22,7 @@ import { cotizaciones } from './routes/cotizaciones.js';
 import { auditoria } from './routes/auditoria.js';
 import { antifraude } from './routes/antifraude.js';
 import { requireRole } from './middleware/requireRole.js';
+import { iniciarVigilancia, registrarLoginFallido } from './lib/antifraude.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -37,6 +38,22 @@ app.get('/api/health/db', async (req, res) => {
   const { error } = await db.from('sucursales').select('id').limit(1);
   if (error) return res.status(500).json({ ok: false, error: error.message });
   res.json({ ok: true });
+});
+
+// Intentos fallidos de inicio de sesión (el login lo hace Supabase desde
+// el navegador; la pantalla avisa aquí cuando falla). Sin token, con tope
+// por IP para que no se pueda abusar.
+const fallidosPorIp = new Map();
+app.post('/api/sesion/login-fallido', async (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? '').split(',')[0].trim();
+  const minuto = Math.floor(Date.now() / 60000);
+  const clave = `${ip}:${minuto}`;
+  const n = (fallidosPorIp.get(clave) ?? 0) + 1;
+  fallidosPorIp.set(clave, n);
+  if (fallidosPorIp.size > 5000) fallidosPorIp.clear();
+  if (n > 20) return res.status(429).end();
+  await registrarLoginFallido(req, req.body?.acceso);
+  res.status(204).end();
 });
 
 app.use('/api', requireAuth);
@@ -96,4 +113,7 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 4200;
-app.listen(port, () => console.log(`italo-facturacion backend escuchando en :${port}`));
+app.listen(port, () => {
+  console.log(`italo-facturacion backend escuchando en :${port}`);
+  iniciarVigilancia();
+});

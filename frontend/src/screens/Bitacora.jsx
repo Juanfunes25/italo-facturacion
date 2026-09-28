@@ -37,6 +37,13 @@ const ACCIONES = {
   'cierre.imprimir': 'Imprimió cierre',
   'alerta.revisar': 'Revisó alerta',
   'venta.error_pagos': 'Error al guardar pagos',
+  'sesion.dispositivo_nuevo': 'Entró desde un dispositivo nuevo',
+  'sesion.login_fallido': 'Intento de entrada fallido',
+  'sesion.bloqueo': 'Pantalla bloqueada (inactividad)',
+  'sesion.desbloqueo': 'Desbloqueó pantalla',
+  'sesion.desbloqueo_fallido': 'Contraseña incorrecta al desbloquear',
+  'arqueo.sorpresa': 'Arqueo sorpresa',
+  'antifraude.reglas': 'Cambió reglas antifraude',
 };
 
 // Acciones que merecen atención inmediata al revisar la bitácora.

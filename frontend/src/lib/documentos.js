@@ -3,6 +3,8 @@
 // manda ese encabezado y el servidor responde 401. Por eso se piden con
 // fetch y se muestran/imprimen desde un blob.
 
+import { idDispositivo } from './dispositivo.js';
+
 const CLAVE_CONFIG = 'italo-facturacion:impresora';
 const CONFIG_DEFECTO = { columnas: 48, autoImprimir: true };
 
@@ -33,7 +35,7 @@ export function guardarConfigImpresora(config) {
 async function pedir(path, session) {
   let res;
   try {
-    res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+    res = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${session.access_token}`, 'X-Dispositivo': idDispositivo() } });
   } catch {
     throw new Error('Sin conexión con el servidor. Revisa el internet e intenta de nuevo.');
   }
@@ -110,11 +112,33 @@ export function imprimirHtml(html) {
   });
 }
 
-export async function imprimirTicket(ventaId, session, { reimpresion = false } = {}) {
+const MOTIVOS_REIMPRESION = ['El cliente la pidió de nuevo', 'El papel se trabó o salió mal', 'El cliente perdió la factura'];
+
+// Toda reimpresión pide un motivo (queda en la bitácora) y el ticket sale
+// marcado como COPIA. Devuelve null si el usuario cancela.
+export function pedirMotivo(titulo, opciones) {
+  const lista = opciones.map((o, i) => `${i + 1}. ${o}`).join('\n');
+  const r = window.prompt(`${titulo}\n\n${lista}\n${opciones.length + 1}. Otro (escríbelo)\n\nEscribe el número o el motivo:`);
+  if (r === null) return null;
+  const texto = r.trim();
+  if (!texto) return null;
+  const n = Number(texto);
+  if (Number.isInteger(n) && n >= 1 && n <= opciones.length) return opciones[n - 1];
+  if (n === opciones.length + 1) return pedirMotivo(titulo, opciones);
+  return texto.slice(0, 200);
+}
+
+export async function imprimirTicket(ventaId, session, { reimpresion = false, razon } = {}) {
   const { columnas } = leerConfigImpresora();
-  const motivo = reimpresion ? '&motivo=reimpresion' : '';
+  let motivo = '';
+  if (reimpresion) {
+    const r = razon ?? pedirMotivo('Motivo de la reimpresión (saldrá marcada como COPIA)', MOTIVOS_REIMPRESION);
+    if (!r) return false;
+    motivo = `&motivo=reimpresion&razon=${encodeURIComponent(r)}`;
+  }
   const html = await (await pedir(`/ventas/${ventaId}/ticket?columnas=${columnas}${motivo}`, session)).text();
   await imprimirHtml(html);
+  return true;
 }
 
 export async function imprimirCierre(cierreId, session) {

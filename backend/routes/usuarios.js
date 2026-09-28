@@ -3,6 +3,7 @@ import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 import { accesoAEmail, accesoVisible, claveInterna } from '../lib/acceso.js';
+import { crearAlerta } from '../lib/alertas.js';
 
 export const usuarios = Router();
 
@@ -68,6 +69,18 @@ usuarios.post('/', requireRole('admin'), async (req, res) => {
     sucursalId: perfil.sucursal_id,
     detalle: { nombre, acceso: accesoMostrado, rol: perfil.rol },
   });
+  // Altas, cambios de rol y de contraseña: quien controla usuarios controla
+  // todo el sistema. Siempre avisa a los administradores.
+  await crearAlerta(req, {
+    tipo: 'usuario.crear',
+    severidad: perfil.rol === 'cajero' ? 'media' : 'alta',
+    titulo: `Nuevo usuario "${accesoMostrado}" (${perfil.rol}) creado por ${req.perfil.nombre}`,
+    sucursalId: perfil.sucursal_id,
+    entidad: 'usuario',
+    entidadId: perfil.id,
+    correo: perfil.rol !== 'cajero',
+    detalle: { nombre, usuario: accesoMostrado, rol: perfil.rol },
+  });
   res.status(201).json({ ...perfil, acceso: accesoMostrado });
 });
 
@@ -95,6 +108,20 @@ usuarios.put('/:id', requireRole('admin'), async (req, res) => {
         sucursalId: data.sucursal_id,
         detalle: { nombre: data.nombre, cambios },
       });
+      const sensible = cambios.rol || cambios.sin_horario || cambios.cierre_ciego || cambios.activo;
+      if (sensible) {
+        const partes = Object.entries(cambios).map(([k, c]) => `${k}: ${c.antes ?? '—'} → ${c.despues ?? '—'}`);
+        await crearAlerta(req, {
+          tipo: 'usuario.permisos',
+          severidad: cambios.rol ? 'alta' : 'media',
+          titulo: `Cambió permisos de ${data.nombre} (${partes.join(', ')})`,
+          sucursalId: data.sucursal_id,
+          entidad: 'usuario',
+          entidadId: data.id,
+          correo: Boolean(cambios.rol),
+          detalle: { usuario: data.nombre, cambios: partes.join(' · '), por: req.perfil.nombre },
+        });
+      }
     }
   }
   res.json(data);
@@ -111,6 +138,17 @@ usuarios.post('/:id/reset-password', requireRole('admin'), async (req, res) => {
     accion: 'usuario.cambiar_contrasena',
     entidad: 'usuario',
     entidadId: req.params.id,
+  });
+  const { data: afectado } = await db.from('perfiles').select('nombre, sucursal_id, rol').eq('id', req.params.id).maybeSingle();
+  await crearAlerta(req, {
+    tipo: 'usuario.contrasena',
+    severidad: afectado?.rol === 'admin' ? 'alta' : 'media',
+    titulo: `Se cambió la contraseña de ${afectado?.nombre ?? 'un usuario'} (por ${req.perfil.nombre})`,
+    sucursalId: afectado?.sucursal_id ?? null,
+    entidad: 'usuario',
+    entidadId: req.params.id,
+    correo: afectado?.rol === 'admin',
+    detalle: { usuario: afectado?.nombre ?? '', por: req.perfil.nombre },
   });
   res.json({ ok: true });
 });

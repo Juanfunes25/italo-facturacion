@@ -20,8 +20,10 @@ import { useConexionEnVivo } from './lib/tiempoReal.js';
 import Icono, { IsotipoItalo } from './components/Icono.jsx';
 import { accesoAEmail, claveInterna } from './lib/acceso.js';
 import { useActualizacion } from './lib/actualizacion.js';
-import { fijarSesionEventos, registrarEvento } from './lib/eventos.js';
+import { fijarSesionEventos, registrarEvento, reportarLoginFallido } from './lib/eventos.js';
 import Antifraude from './screens/Antifraude.jsx';
+import BloqueoInactividad from './components/BloqueoInactividad.jsx';
+import NotificacionesAlertas from './components/NotificacionesAlertas.jsx';
 
 function PantallaLogin({ onEntrar }) {
   const [acceso, setAcceso] = useState('');
@@ -39,6 +41,8 @@ function PantallaLogin({ onEntrar }) {
     });
     setCargando(false);
     if (error) {
+      // Varios intentos fallidos seguidos generan alerta para el dueño.
+      if (/invalid login credentials/i.test(error.message)) reportarLoginFallido(acceso);
       return setError(
         /invalid login credentials/i.test(error.message) ? 'Usuario o contraseña incorrectos' : error.message
       );
@@ -417,6 +421,8 @@ function PantallaApp({ session, onSalir }) {
         />
       </div>
       </main>
+      <BloqueoInactividad session={session} perfil={perfil} />
+      {perfil.rol === 'admin' && <NotificacionesAlertas session={session} onVer={() => setPantallaActiva('antifraude')} />}
     </div>
   );
 }

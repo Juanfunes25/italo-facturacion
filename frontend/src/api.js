@@ -1,3 +1,5 @@
+import { idDispositivo } from './lib/dispositivo.js';
+
 async function llamar(method, path, session, body) {
   let res;
   try {
@@ -6,6 +8,7 @@ async function llamar(method, path, session, body) {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
+        'X-Dispositivo': idDispositivo(),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });

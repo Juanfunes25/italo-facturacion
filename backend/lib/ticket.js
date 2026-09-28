@@ -62,12 +62,18 @@ export function etiquetaDescuento(venta) {
   return etiquetaPorcentaje(venta.descuento_porcentaje);
 }
 
-export function formatearTicket(venta, ancho = 48) {
+export function formatearTicket(venta, ancho = 48, { copia = 0, leyendaGratis = false } = {}) {
   const L = [];
   L.push(centrar('INVERSIONES MILANO S DE R.L.', ancho));
   L.push(centrar('ITALO GELATERIA', ancho));
   for (const r of ajustar(venta.sucursales?.nombre ?? '', ancho)) L.push(centrar(r, ancho));
   L.push(linea('-', ancho));
+
+  if (copia > 0) {
+    L.push(centrar('*** COPIA ***', ancho));
+    L.push(centrar(`REIMPRESION #${copia} - NO ES ORIGINAL`, ancho));
+    L.push(linea('-', ancho));
+  }
 
   const puntoEmision = venta.puntos_emision;
   if (puntoEmision?.es_borrador) {
@@ -111,8 +117,13 @@ export function formatearTicket(venta, ancho = 48) {
     L.push(filaMontoDerecha('Recibido', venta.efectivo_recibido, ancho));
     L.push(filaMontoDerecha('Cambio', venta.cambio, ancho));
   }
+  if (venta.tercera_edad_identidad) {
+    for (const r of ajustar(`Desc. 3ra edad: ${venta.tercera_edad_nombre ?? ''} ID ${venta.tercera_edad_identidad}`, ancho)) L.push(r);
+  }
   L.push('');
   L.push(centrar('Gracias por su compra', ancho));
+  // Opcional (Antifraude → Reglas): convierte a cada cliente en auditor.
+  if (leyendaGratis) for (const r of ajustar('Si no recibe su factura, su compra es GRATIS', ancho)) L.push(centrar(r, ancho));
   L.push('');
 
   return L.join('\n');

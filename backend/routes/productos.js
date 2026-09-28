@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
+import { crearAlerta } from '../lib/alertas.js';
 
 export const productos = Router();
 
@@ -93,6 +94,20 @@ productos.put('/:id', requireRole('admin', 'manager'), async (req, res) => {
         entidad: 'producto',
         entidadId: data.id,
         detalle: { nombre: data.nombre, cambios },
+      });
+    }
+    // Bajar un precio es una forma silenciosa de "regalar" producto (o de
+    // cobrar el precio real y facturar el rebajado): siempre genera alerta.
+    const antes = Number(anterior.precio);
+    const despues = Number(data.precio);
+    if (Number.isFinite(antes) && despues < antes) {
+      await crearAlerta(req, {
+        tipo: 'producto.baja_precio',
+        severidad: despues < antes * 0.8 ? 'alta' : 'media',
+        titulo: `Bajó el precio de ${data.nombre}: L ${antes.toFixed(2)} → L ${despues.toFixed(2)}`,
+        entidad: 'producto',
+        entidadId: data.id,
+        detalle: { producto: data.nombre, antes, despues, rebaja_pct: Math.round((1 - despues / antes) * 100), por: req.perfil.nombre },
       });
     }
   }

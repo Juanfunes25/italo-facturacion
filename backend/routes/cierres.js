@@ -5,6 +5,7 @@ import { calcularCuadre, desgloseTurno, totalesPorForma } from '../lib/cierre.js
 import { enviarResumenCierre } from '../lib/correo.js';
 import { registrarAuditoria } from '../lib/auditoria.js';
 import { crearAlerta } from '../lib/alertas.js';
+import { obtenerReglas } from '../lib/reglas.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { anchoValido, envolverTicketHtml, formatearCierre } from '../lib/ticket.js';
 
@@ -48,12 +49,12 @@ function fechaLocal(iso) {
 
 // Supabase devuelve máximo 1000 filas por consulta: un día de mucho
 // movimiento puede pasarse, así que se pide por páginas.
-async function ventasDelTurno(sucursal_id, desde, hasta) {
+export async function ventasDelTurno(sucursal_id, desde, hasta) {
   const todas = [];
   for (let desdeFila = 0; ; desdeFila += 1000) {
     const { data, error } = await db
       .from('ventas')
-      .select('id, total, numero_factura, correlativo, anulada, cambio, descuento, venta_pagos(monto, formas_pago(nombre)), detalle_venta(descuento, descuento_porcentaje)')
+      .select('id, total, numero_factura, correlativo, anulada, cambio, descuento, impresiones, cajero_id, venta_pagos(monto, formas_pago(nombre)), detalle_venta(descuento, descuento_porcentaje)')
       .eq('sucursal_id', sucursal_id)
       .eq('estado', 'pagada')
       .gte('fecha_emision', desde)
@@ -85,6 +86,77 @@ async function resumenTurno(sucursal_id, desde, hasta) {
     factura_hasta: ventas[ventas.length - 1]?.numero_factura ?? null,
     salidas_sugeridas: round2((gastos ?? []).reduce((s, g) => s + Number(g.monto), 0)),
   };
+}
+
+// Patrones sospechosos que un solo cierre no muestra a simple vista:
+//  - Desvío tarjeta→efectivo: el cliente paga en efectivo pero se registra
+//    como tarjeta; el POS da de menos y la gaveta de más (sobrante que se
+//    lo lleva quien cierra).
+//  - Reincidencia: el mismo cajero con faltantes en varios cierres recientes.
+//  - Facturas del turno que nunca se imprimieron (¿el cliente recibió factura?).
+async function patronesDeCierre(req, cierre, cuadre, sucursalId, desde, hasta) {
+  const reglas = await obtenerReglas();
+  const nombre = cierre.sucursales?.nombre ?? 'sucursal';
+
+  if (cuadre.diferencia_efectivo >= 1 && cuadre.diferencia_tarjeta <= -1) {
+    await crearAlerta(req, {
+      tipo: 'cierre.patron_desvio',
+      severidad: 'alta',
+      titulo: `Patrón de desvío en ${nombre}: sobra efectivo (L ${cuadre.diferencia_efectivo.toFixed(2)}) y falta tarjeta (L ${Math.abs(cuadre.diferencia_tarjeta).toFixed(2)})`,
+      sucursalId,
+      entidad: 'cierre',
+      entidadId: cierre.id,
+      correo: true,
+      detalle: {
+        cajero: req.perfil.nombre,
+        sobrante_efectivo: cuadre.diferencia_efectivo,
+        faltante_tarjeta: cuadre.diferencia_tarjeta,
+        explicacion: 'Ventas cobradas en efectivo pero registradas como tarjeta',
+      },
+    });
+  }
+
+  if (cuadre.diferencia_efectivo <= -1) {
+    const hace7 = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data: previos } = await db
+      .from('cierres_caja')
+      .select('id, diferencia_efectivo')
+      .eq('cajero_id', req.perfil.id)
+      .lte('diferencia_efectivo', -1)
+      .gte('fecha_fin', hace7);
+    const cantidad = previos?.length ?? 0;
+    if (cantidad >= reglas.faltantes_reincidencia) {
+      const total = (previos ?? []).reduce((s, c) => s + Math.abs(Number(c.diferencia_efectivo)), 0);
+      await crearAlerta(req, {
+        tipo: 'cierre.reincidencia',
+        severidad: 'alta',
+        titulo: `${req.perfil.nombre} acumula ${cantidad} cierres con faltante en 7 días (L ${total.toFixed(2)})`,
+        sucursalId,
+        entidad: 'cierre',
+        entidadId: cierre.id,
+        correo: true,
+        detalle: { cajero: req.perfil.nombre, cierres_con_faltante: cantidad, monto_total: round2(total) },
+      });
+    }
+  }
+
+  const ventas = await ventasDelTurno(sucursalId, desde, hasta);
+  const sinImprimir = ventas.filter((v) => !v.anulada && Number(v.impresiones ?? 0) === 0);
+  if (sinImprimir.length > 0) {
+    await crearAlerta(req, {
+      tipo: 'cierre.sin_imprimir',
+      severidad: sinImprimir.length >= 3 ? 'alta' : 'media',
+      titulo: `${sinImprimir.length} factura(s) del turno en ${nombre} nunca se imprimieron`,
+      sucursalId,
+      entidad: 'cierre',
+      entidadId: cierre.id,
+      detalle: {
+        cajero: req.perfil.nombre,
+        facturas: sinImprimir.slice(0, 15).map((v) => v.numero_factura).join(', '),
+        monto: round2(sinImprimir.reduce((s, v) => s + Number(v.total), 0)),
+      },
+    });
+  }
 }
 
 function validarRango(desde, hasta) {
@@ -273,6 +345,9 @@ cierres.post('/', async (req, res) => {
         })
       );
     }
+    await patronesDeCierre(req, cierre, cuadre, sucursal_id, fecha_inicio, fecha_fin).catch((e) =>
+      console.error('[cierre] patrones', e.message)
+    );
     // No bloquea el cierre si el correo falla o no está configurado.
     enviarResumenCierre(cierre, cierre.sucursales?.nombre ?? '').catch(() => {});
 
